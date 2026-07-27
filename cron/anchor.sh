@@ -45,7 +45,7 @@ done
 [ -n "$DBP" ] || die "找不到能執行的 dbp（cron PATH 比 shell 窄）"
 
 # ── 跑 dbp anchor（鏈斷時這裡會 die，死因會是「鏈斷」不是「找不到 dbp」）─
-ANCHOR_OUT="$("$DBP" anchor 2>&1)" || die "dbp anchor 失敗: $(printf '%s' "$ANCHOR_OUT" | tail -1)"
+ANCHOR_OUT="$("$DBP" anchor --all 2>&1)" || die "dbp anchor 失敗: $(printf '%s' "$ANCHOR_OUT" | tail -1)"
 
 # ── 寫入 audit/ANCHORS.md ───────────────────────────────────────────
 ANCHORS="$REPO_ROOT/audit/ANCHORS.md"
@@ -54,7 +54,7 @@ mkdir -p "$(dirname "$ANCHORS")"
 # 如果沒有檔頭就補
 [ -f "$ANCHORS" ] || printf '%s\n' "# 錨點紀錄" "" "> 自動產生，不要手改。cron/anchor.sh 每天 append。" "" > "$ANCHORS"
 
-# append 一行
+# append 兩行（edits + runs）
 printf '%s\n' "$ANCHOR_OUT" >> "$ANCHORS"
 
 # ── commit & push ────────────────────────────────────────────────────

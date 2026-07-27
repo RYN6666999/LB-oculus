@@ -18,14 +18,14 @@ breach() { printf '%s\n' "BREACH: $*" >&2; exit 0; }
 sealed() { printf '%s\n' "SEALED: $*" >&2; exit 1; }
 broken() { printf '%s\n' "BROKEN: $*" >&2; exit 2; }
 
-# $SANDBOX  一份用完即丟的 repo 複本（改壞它不影響真 repo）
-# $LEDGER   一份空的 ledger 目錄（DEBUGPEDIA_DIR 已指向它）
+# $DPEDIA  一份清潔的 ~/.debugpedia 模擬目錄（DEBUGPEDIA_DIR 指向它）
+# $LEDGER  $DPEDIA/ledger（攻擊直接往這裡寫檔案）
 # $PY       這台機器上真的能跑的 python3
 
 # 繞過 shebang 直接用解譯器跑 dbp。
 # 給「不是在測 shebang」的攻擊用 —— 否則 Linux 上每條都會因為
 # /opt/homebrew/bin/python3 不存在而 BROKEN，測不到真正想測的東西。
-dbp() { DEBUGPEDIA_DIR="$LEDGER" "$PY" "$SANDBOX/bin/dbp" "$@"; }
+dbp() { DEBUGPEDIA_DIR="$DPEDIA" "$PY" "$SANDBOX/bin/dbp" "$@"; }
 
 # 前置條件不成立時要 BROKEN，不可以 SEALED。
 need() { [ -e "$1" ] || broken "前置條件不成立，缺少 $1"; }

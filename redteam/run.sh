@@ -75,9 +75,10 @@ for atk in "$RT/attacks"/*.sh; do
   # 被誤認成「這次跑出來的結果」—— 攻擊 009 會因此假 SEALED。
   rm -f "$SANDBOX/cron/_heartbeat.json" "$SANDBOX/cron/_lasterr.txt"
   rm -rf "$SANDBOX/cron/candidates"
-  LEDGER="$WORK/$name.ledger"
+  DPEDIA="$WORK/$name.dpedia"
+	  LEDGER="$DPEDIA/ledger"
   mkdir -p "$LEDGER"
-  export SANDBOX LEDGER
+  export SANDBOX DPEDIA LEDGER
 
   out=$(sh "$atk" 2>&1); rc=$?
 

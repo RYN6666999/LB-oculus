@@ -2,12 +2,12 @@
 
 **自動產生 —— 不要手改。** 來源是 `attacks/*.sh` 的檔頭宣告。
 
-> 產生於 2026-07-27T15:22:51+00:00
+> 產生於 2026-07-27T16:04:58+00:00
 > 重建：`python3 redteam/index.py` · 檢查過期：`python3 redteam/index.py --check`
 
 ---
 
-共 **12** 支 · 預期 BREACH（洞還在）**8** 支 · 監視 harness 自己的 canary **2** 支
+共 **13** 支 · 預期 BREACH（洞還在）**9** 支 · 監視 harness 自己的 canary **2** 支
 
 > BREACH 是綠色的。洞還在 = 符合預期。洞消失才要停下來查。
 
@@ -147,7 +147,7 @@
 |---|---|
 | **EXPECT** | `SEALED` |
 | **標的** | `cron/generalize.sh · cron/generalize.py（案 002 第一階段）` |
-| **相關文件** | `audit/LEDGER-SNAPSHOT.md` · `plan/002-llm-generalizer-cron.md` · `plan/README.md` |
+| **相關文件** | `audit/ANCHORS.md` · `audit/LEDGER-SNAPSHOT.md` · `plan/002-llm-generalizer-cron.md` · `plan/README.md` |
 
 **宣稱**：接外部 LLM 的排程最可能的失效不是「歸納得不好」，是「失敗了但沒人知道」
 
@@ -170,6 +170,22 @@
 **為什麼值得一支攻擊**：檔案鎖得再好，目錄沒鎖等於沒鎖。這就是 002 自己寫的手段。
 
 單獨跑：`./redteam/run.sh 010`
+
+---
+
+## `011-ledger-truncatable.sh`
+
+| | |
+|---|---|
+| **EXPECT** | `BREACH` |
+| **標的** | `~/.debugpedia/ledger/_edits.jsonl（截尾）` |
+| **相關文件** | `audit/2026-07-27-verification.md` · `audit/LEDGER-SNAPSHOT.md` · `plan/001-restore-executability.md` · `plan/002-llm-generalizer-cron.md` · `plan/README.md` |
+
+**宣稱**：刪最後 N 行，雜湊鏈前綴自洽，verify-chain --anchor 也通過（舊 hash 在前面仍在鏈上）
+
+**為什麼值得一支攻擊**：想抹掉剛做過的事最省力的手法就是砍尾巴。改中間和換本都擋了，截尾還沒擋。
+
+單獨跑：`./redteam/run.sh 011`
 
 ---
 
