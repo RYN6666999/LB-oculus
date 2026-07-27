@@ -1,0 +1,72 @@
+#!/opt/homebrew/bin/python3
+"""dbp-risk-gate — PreToolUse hook：動手改檔前，把這個檔的前科丟出來。
+
+這是把陰陽眼從「亞健康」推到「主動預測」的那一步。
+
+差別很實際：
+  `dbp find` / `dbp risk` 都要人先想到去查 —— 而想不到去查的那個時刻，
+  正是要犯錯的時刻。2026-07-27 實測，靠自律的記錄執行率只有 25%，
+  沒有理由相信靠自律的「查詢」會比較高。
+
+  所以查詢也要交給 harness：要改哪個檔，harness 就替你問一次。
+  學到的東西要在動手當下出現才算落地，躺在 log 裡不算。
+
+絕對約束（跟 dbp 本體同一條）：
+  · **永遠 exit 0，永遠不擋。** 會擋住工作的 hook 最後一定會被關掉。
+  · 沒前科就完全安靜。每次都講話的東西會被當成雜訊忽略。
+"""
+
+import json
+import os
+import subprocess
+import sys
+
+DBP = os.path.expanduser("~/.local/bin/dbp")
+WATCH = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
+
+
+def main():
+    try:
+        data = json.loads(sys.stdin.read() or "{}")
+    except Exception:
+        return 0
+
+    tool = data.get("tool_name") or data.get("toolName") or ""
+    if tool not in WATCH:
+        return 0
+
+    ti = data.get("tool_input") or data.get("toolInput") or {}
+    path = ti.get("file_path") or ti.get("path") or ti.get("notebook_path") or ""
+    if not path or not os.path.exists(DBP):
+        return 0
+
+    try:
+        p = subprocess.run([DBP, "risk", str(path)],
+                           capture_output=True, text=True, timeout=6)
+    except Exception:
+        return 0
+
+    out = (p.stdout or "").strip()
+    # dbp risk 無前科時 returncode 0；有前科才回 1
+    if p.returncode != 1 or not out:
+        return 0
+
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "additionalContext": (
+                "【coding 陰陽眼 · 這個檔有前科】\n" + out +
+                "\n改完記得驗，並且照鐵律二換一條路驗。"
+                "又踩到就 `dbp \"…\"` 記一筆；順手解掉舊的就 `dbp fix <id> \"…\"`。"
+            ),
+        }
+    }, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception:
+        sys.exit(0)          # 絕不擋住呼叫者

@@ -1,0 +1,540 @@
+#!/opt/homebrew/bin/python3
+"""dbp — debug 百科（鐵律三）
+
+╔══════════════════════════════════════════════════════════════════╗
+║  鐵律三：任何錯誤只要被抓到一次 —— AI 抓、人抓、機器抓都算 ——      ║
+║  就立刻標記收錄。標記成本必須低到不會有人偷懶跳過。                 ║
+║                                                                  ║
+║  單次抓到是事件，累積起來才是知識。                                ║
+╚══════════════════════════════════════════════════════════════════╝
+
+為什麼需要它（鐵律二抓不完）：
+  0 信心路由保證「這一次被驗到」，但同一種坑會在別的檔案、別的專案、
+  別的 AI 身上重犯。沒有累積，每次都是第一次。
+
+設計取捨：
+  · **必填只有一個欄位**（what）。其餘全部自動抓或可省略 —— 只要標記
+    有一點麻煩，忙的時候就會被跳過，而忙的時候正是最會出錯的時候。
+  · JSONL append-only。一行一筆，不需 schema migration，天生可聚合。
+    沿用 ~/.gbrain/audit/ 的既有慣例，不另造格式。
+  · 壞掉也不准擋住呼叫者 —— 記錄失敗就印到 stderr，exit 0。
+    一個會讓你工作中斷的記錄工具，最後會被你關掉。
+
+用法（低成本是重點）：
+    dbp "topology 的 at 指向不存在的目錄"
+    dbp "yaml 純量裡有 at: 被當成 mapping key" -w topology.yaml:48
+    dbp "~ 在雙引號裡不展開" -w verify.sh -k human -t shell,quoting
+
+    dbp ls              最近 20 筆
+    dbp find yaml       搜尋
+    dbp stats           聚合（大數據整理的入口）
+    dbp fix <id> "..."  補上後來怎麼解的
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+DIR = Path(os.environ.get("DEBUGPEDIA_DIR", Path.home() / ".debugpedia"))
+WHO = ("ai", "human", "machine")
+
+
+def _week_file(when=None):
+    d = when or datetime.now(timezone.utc)
+    y, w, _ = d.isocalendar()
+    return DIR / f"{y}-W{w:02d}.jsonl"
+
+
+def _repo():
+    """自動抓 repo，抓不到就算了 —— 不為了一個欄位讓記錄失敗。"""
+    try:
+        p = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                           capture_output=True, text=True, timeout=2)
+        if p.returncode == 0:
+            return Path(p.stdout.strip()).name
+    except Exception:
+        pass
+    return None
+
+
+def _all():
+    rows = []
+    if not DIR.is_dir():
+        return rows
+    for f in sorted(DIR.glob("*.jsonl")):
+        for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue          # 壞行跳過，不讓一行毀掉整份
+    return rows
+
+
+def add(what, where=None, who="ai", tags=None, evidence=None):
+    rec = {
+        "id": f"{int(time.time()*1000):x}",
+        "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "who": who if who in WHO else "ai",
+        "what": what.strip(),
+    }
+    for k, v in (("where", where), ("tags", tags), ("evidence", evidence),
+                 ("repo", _repo()), ("cwd", os.getcwd())):
+        if v:
+            rec[k] = v
+    try:
+        DIR.mkdir(parents=True, exist_ok=True)
+        with _week_file().open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        print(f"dbp {rec['id']} · {rec['what'][:60]}")
+    except Exception as e:
+        # 絕不擋住呼叫者。會中斷工作的記錄工具最後會被關掉。
+        print(f"dbp: 寫入失敗（已忽略）: {e}", file=sys.stderr)
+    return 0
+
+
+def open_item(what, where=None, blocked=None, tags=None):
+    """記一條「還沒收尾」。
+
+    為什麼要有這個：錯誤會叫，未完成不會叫。
+    2026-07-27 一輪對話裡累積了 5 條「做了但驗不了 / 還沒做 / 等人點頭」，
+    全部只活在一則聊天訊息裡 —— 視窗一關就消失，然後變成幾個月後的大患，
+    或永遠不被發現直到出事。
+
+    它們不是 bug，所以陰陽眼的錯誤紀錄一條都抓不到。這是另一個 kind。
+    """
+    rec = {
+        "id": f"{int(time.time()*1000):x}",
+        "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "kind": "open",
+        "who": "ai",
+        "what": what.strip(),
+    }
+    for k, v in (("where", where), ("blocked", blocked), ("tags", tags),
+                 ("repo", _repo()), ("cwd", os.getcwd())):
+        if v:
+            rec[k] = v
+    try:
+        DIR.mkdir(parents=True, exist_ok=True)
+        with _week_file().open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        print(f"dbp open {rec['id']} · {rec['what'][:60]}")
+    except Exception as e:
+        print(f"dbp: 寫入失敗（已忽略）: {e}", file=sys.stderr)
+    return 0
+
+
+def done(rid, note=""):
+    rec = {
+        "id": f"{int(time.time()*1000):x}",
+        "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "kind": "done", "closes": rid, "who": "ai",
+        "what": note.strip() or f"closed {rid}",
+    }
+    try:
+        DIR.mkdir(parents=True, exist_ok=True)
+        with _week_file().open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        print(f"dbp done · {rid}")
+    except Exception as e:
+        print(f"dbp: 寫入失敗（已忽略）: {e}", file=sys.stderr)
+    return 0
+
+
+def list_open():
+    rows = _all()
+    closed = {r.get("closes") for r in rows if r.get("kind") == "done"}
+    items = [r for r in rows if r.get("kind") == "open" and r["id"] not in closed]
+    if not items:
+        print("\n✓ 沒有未收尾的項目。\n")
+        return 0
+    now = datetime.now(timezone.utc)
+    print(f"\n=== 未收尾 {len(items)} 條 ===\n")
+    by_blocked = {}
+    for r in items:
+        by_blocked.setdefault(r.get("blocked") or "沒擋住，就是還沒做", []).append(r)
+    for blk, rs in sorted(by_blocked.items(), key=lambda x: -len(x[1])):
+        print(f"  ▸ {blk}")
+        for r in rs:
+            try:
+                age = (now - datetime.fromisoformat(r["ts"])).days
+            except Exception:
+                age = 0
+            aged = f"  ⚠️{age}天" if age >= 3 else ""
+            loc = f"  @{r['where']}" if r.get("where") else ""
+            print(f"      {r['id']}  {r['what'][:66]}{loc}{aged}")
+        print()
+    print("  收尾：dbp done <id> [\"怎麼解的\"]\n")
+    return 0
+
+
+def ls(n=20):
+    rows = _all()[-n:]
+    for r in rows:
+        loc = f"  @{r['where']}" if r.get("where") else ""
+        fix = "  ✔" if r.get("fix") else ""
+        print(f"{r['id']}  {r['ts'][:16]}  [{r['who']:7}] {r['what'][:64]}{loc}{fix}")
+    print(f"\n共 {len(_all())} 筆")
+    return 0
+
+
+def find(q):
+    q = q.lower()
+    hits = [r for r in _all()
+            if q in json.dumps(r, ensure_ascii=False).lower()]
+    for r in hits:
+        loc = f"  @{r['where']}" if r.get("where") else ""
+        print(f"{r['id']}  {r['ts'][:10]}  {r['what'][:70]}{loc}")
+        if r.get("fix"):
+            print(f"         → {r['fix'][:70]}")
+    print(f"\n{len(hits)} 筆命中 / 共 {len(_all())}")
+    return 0
+
+
+def risk(target):
+    """動手前問一句：這個檔／這類操作，以前在哪裡摔過？
+
+    這是把陰陽眼從「事後查得到」變成「事前擋得住」的那一步。
+    差別很實際：`dbp find` 要人先想到去查，而想不到去查的那個時刻，
+    正是要犯錯的時刻。risk 是給 hook 在動手當下自動呼叫的。
+    """
+    rows = [r for r in _all() if r.get("kind") not in ("open", "done")]
+    t = str(target)
+    base = os.path.basename(t.rstrip("/")) or t
+    stem = os.path.splitext(base)[0]
+    ext = os.path.splitext(base)[1].lstrip(".")
+
+    direct, kin = [], []
+    for r in rows:
+        blob = f"{r.get('where','')} {r.get('what','')} {r.get('tags','')}".lower()
+        if base.lower() in blob or (len(stem) > 3 and stem.lower() in blob):
+            direct.append(r)
+        elif ext and ext in (r.get("tags") or "").lower():
+            kin.append(r)
+
+    # 同副檔名的族群風險（yaml 的引號、sh 的展開…都是跨檔重複的）
+    if ext and not kin:
+        for r in rows:
+            if ext in f"{r.get('where','')}".lower() and r not in direct:
+                kin.append(r)
+
+    if not direct and not kin:
+        print(f"  陰陽眼：{base} 無前科")
+        return 0
+    print(f"\n⚠️  陰陽眼 · {base} 的前科")
+    for r in direct[:6]:
+        print(f"    · {r['what'][:96]}")
+        if r.get("fix"):
+            print(f"        → {r['fix'][:88]}")
+    if kin:
+        print(f"    ── 同類（.{ext}）踩過 {len(kin)} 次 ──")
+        for r in kin[:4]:
+            print(f"    · {r['what'][:96]}")
+    print()
+    return 1
+
+
+def rules(min_hits=2):
+    """從錯誤史歸納出法則候選。
+
+    單筆是事件，重複才是法則。一個標籤累積到 min_hits 次，
+    它就不是零星 bug 了，是一個該從結構上關掉的類別 ——
+    這時候要做的是消滅整類，不是再修一個個案。
+    """
+    rows = [r for r in _all() if r.get("kind") not in ("open", "done")]
+    by_tag = {}
+    for r in rows:
+        for t in (r.get("tags") or "").split(","):
+            t = t.strip()
+            if t and t not in ("meta", "auto", "self"):
+                by_tag.setdefault(t, []).append(r)
+
+    hot = {k: v for k, v in by_tag.items() if len(v) >= min_hits}
+    if not hot:
+        print(f"\n還沒有任何類別達到 {min_hits} 次。單筆是事件，重複才是法則。\n")
+        return 0
+
+    print(f"\n=== 法則候選 · 出現 ≥{min_hits} 次的類別 ===\n")
+    for tag, rs in sorted(hot.items(), key=lambda x: -len(x[1])):
+        span = {r.get("repo") or "?" for r in rs}
+        cross = "  ⚠️跨 repo" if len(span) > 1 else ""
+        print(f"■ {tag}  ×{len(rs)}{cross}")
+        for r in rs[:3]:
+            print(f"    · {r['what'][:88]}")
+        if len(rs) > 3:
+            print(f"    · …還有 {len(rs)-3} 筆")
+        print()
+    print("  ≥2 次 = 該從結構上關掉這一類，不是再修一個個案。")
+    print("  關掉的方式：加一道機械檢查，讓這類錯誤不可能再產生。\n")
+    return 0
+
+
+def stats():
+    rows = _all()
+    if not rows:
+        print("還沒有紀錄。第一次抓到錯誤時跑：dbp \"描述\"")
+        return 0
+    by_who, by_repo, by_tag = {}, {}, {}
+    fixed = 0
+    for r in rows:
+        by_who[r.get("who", "?")] = by_who.get(r.get("who", "?"), 0) + 1
+        k = r.get("repo") or "(無 repo)"
+        by_repo[k] = by_repo.get(k, 0) + 1
+        for t in (r.get("tags") or "").split(","):
+            t = t.strip()
+            if t:
+                by_tag[t] = by_tag.get(t, 0) + 1
+        fixed += bool(r.get("fix"))
+    print(f"\n總計 {len(rows)} 筆 · 已補解法 {fixed} 筆 ({fixed*100//max(len(rows),1)}%)\n")
+    for title, d in (("誰抓到", by_who), ("哪個 repo", by_repo), ("標籤", by_tag)):
+        if not d:
+            continue
+        print(f"  {title}")
+        for k, v in sorted(d.items(), key=lambda x: -x[1])[:10]:
+            print(f"    {v:4}  {k}")
+        print()
+    return 0
+
+
+SWEEP_EXT = (".md", ".yaml", ".yml", ".toml", ".json", ".py", ".sh")
+SWEEP_SKIP = {".git", "node_modules", "__pycache__", "dist", "build",
+              "target", ".venv", "venv", ".next", "coverage"}
+# 路徑判定：第一版只要「有斜線」就算，結果 812 條裡九成五是假陽性 ——
+# try/except、Python/Rust、application/json、tools/list、github.com/... 全中。
+# 假紅比沒有更糟：它會訓練人忽略紅燈。
+#
+# 所以改成硬性要求「已知程式碼副檔名結尾」。散文的斜線不帶副檔名，自然被排除。
+# 寧可漏抓也不亂報 —— sweep 的價值在「報出來的都該處理」。
+CODE_EXT = r"(?:py|md|ya?ml|toml|json|sh|ts|tsx|js|mjs|rs|txt|sql|db|sqlite|plist|jsonl|lock|cfg|ini)"
+PATHISH = re.compile(
+    r"(?<![:\w])"                      # 前面不是 :// 也不是英數（擋 URL 與 詞尾）
+    r"((?:~|\.{1,2})?/[\w.\-~/]*\.%s|[\w.\-]+(?:/[\w.\-]+)+\.%s)" % (CODE_EXT, CODE_EXT))
+URLISH = re.compile(r"https?://|www\.|github\.com|\w+\.(?:com|org|net|io|dev)/")
+# 這一行是在「拆穿」而不是「宣稱」→ 不算死引用。
+DEBUNK = re.compile(
+    # 這一行在「拆穿」而不是「宣稱」
+    r"實查|為假|不在\s*repo|不存在|前科|曾宣稱|反面教材|假宣稱|"
+    r"doesn'?t exist|not in repo|debunk|phantom|例[：:]|例如|"
+    # 這一行講的是「別的 repo 的 hash」，本來就不該在本 repo 找得到。
+    # 2026-07-27：漏了這類，讓 upstream 的 laap-AGI hash 佔了假陽性七成。
+    r"upstream|上游|laap-AGI|遠端|另一個\s*repo|跨\s*repo|!=|≠")
+HASHISH = re.compile(r"\b([0-9a-f]{7,40})\b")
+DATEISH = re.compile(r"(?:最後更新|最後校準|last[ _-]?updated?|updated)[：:\s]*(\d{4})-(\d{2})-(\d{2})")
+
+
+def _sweep_files(root):
+    out = []
+    for dp, dns, fns in os.walk(root):
+        dns[:] = [d for d in dns if d not in SWEEP_SKIP and not d.startswith(".")]
+        for fn in fns:
+            if fn.endswith(SWEEP_EXT):
+                out.append(os.path.join(dp, fn))
+        if len(out) > 4000:
+            break
+    return out
+
+
+def sweep(root=".", record=False):
+    """掃出『沒有證據撐的宣稱』，列成刪除候選。
+
+    這支不是再加一道閘 —— 閘是防新的屎，sweep 是鏟既有的。
+    每條都附證據，因為「建議刪掉」本身也是一個宣稱，也得配得上它的證據。
+    """
+    root = os.path.abspath(os.path.expanduser(root))
+    files = _sweep_files(root)
+    today = datetime.now(timezone.utc).date()
+    dead_ref, dead_hash, rotten, findings = [], [], [], []
+    # 抑制計數必須被印出來。每個抑制詞都是牆上的一個洞 ——
+    # 洞可以有，但不能沒人知道它在那裡。閘一旦擁有「什麼不算問題」的
+    # 裁量權又沒人看著，它就從屠龍者變成龍。
+    suppressed = {}
+
+    in_git = subprocess.run(["git", "-C", root, "rev-parse", "--git-dir"],
+                            capture_output=True, text=True).returncode == 0
+
+    for f in files:
+        try:
+            txt = open(f, encoding="utf-8", errors="replace").read()
+        except Exception:
+            continue
+        rel = os.path.relpath(f, root)
+
+        for ln, line in enumerate(txt.splitlines(), 1):
+            if line.lstrip().startswith(("#!", "//", "http")):
+                continue
+            if URLISH.search(line):
+                suppressed["URL 行"] = suppressed.get("URL 行", 0) + 1
+                continue          # URL 裡的斜線不是本機路徑
+            for ref in set(PATHISH.findall(line)):
+                if "..." in ref:
+                    dead_ref.append((rel, ln, ref, "含縮寫，機器驗不了"))
+                    continue
+                p = os.path.expanduser(ref)
+                if not os.path.isabs(p):
+                    p = os.path.join(root, ref)
+                if not os.path.exists(p):
+                    dead_ref.append((rel, ln, ref, "路徑不存在"))
+
+        if in_git:
+            for h in set(HASHISH.findall(txt)):
+                if h.isdigit() or len(h) < 7:
+                    continue
+                r = subprocess.run(["git", "-C", root, "cat-file", "-e", f"{h}^{{commit}}"],
+                                   capture_output=True)
+                if r.returncode != 0 and re.search(rf"(commit|hash|@|至)\s*`?{h}", txt):
+                    # 「宣稱它是真的」和「引用它當反面教材」要分開 ——
+                    # 2026-07-27 這裡差點把 8 處反面教材報成「謊言繁殖」。
+                    # 抓鬼工具生出誇大的鬼，那個誇大會變成下一個要抓的鬼。
+                    for ln in txt.splitlines():
+                        if h not in ln:
+                            continue
+                        if DEBUNK.search(ln):
+                            suppressed["DEBUNK 詞"] = suppressed.get("DEBUNK 詞", 0) + 1
+                            break
+                        dead_hash.append((rel, h))
+                        break
+
+        m = DATEISH.search(txt)
+        if m:
+            try:
+                d = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), tzinfo=timezone.utc).date()
+                age = (today - d).days
+                if age > 14:
+                    rotten.append((rel, m.group(0).strip(), age, len(txt)))
+            except ValueError:
+                pass
+
+    print(f"\n=== 陰陽眼 sweep · {root} ===")
+    print(f"掃了 {len(files)} 個檔\n")
+
+    if dead_ref:
+        print(f"■ 死引用 {len(dead_ref)} 條 — 指了個不存在的東西")
+        agg = {}
+        for rel, ln, ref, why in dead_ref:
+            agg.setdefault(rel, []).append((ln, ref, why))
+        for rel, items in sorted(agg.items(), key=lambda x: -len(x[1]))[:12]:
+            print(f"  {rel}  ({len(items)} 條)")
+            for ln, ref, why in items[:3]:
+                print(f"      :{ln}  {ref}   ← {why}")
+        print()
+        findings.append(f"死引用 {len(dead_ref)} 條")
+
+    if dead_hash:
+        print(f"■ 死 commit {len(dead_hash)} 條 — 引用了此 repo 沒有的 hash")
+        for rel, h in dead_hash[:10]:
+            print(f"  {rel}  →  {h}")
+        print()
+        findings.append(f"死 commit {len(dead_hash)} 條")
+
+    if rotten:
+        print(f"■ 腐朽 {len(rotten)} 檔 — 自稱是現況，但已超過 14 天沒更新")
+        for rel, stamp, age, size in sorted(rotten, key=lambda x: -x[2])[:12]:
+            flag = "  ← 又大又舊，優先砍" if size > 15000 else ""
+            print(f"  {age:4}天  {size:>7,}B  {rel}   ({stamp}){flag}")
+        print()
+        findings.append(f"腐朽 {len(rotten)} 檔")
+
+    if suppressed:
+        tot = sum(suppressed.values())
+        print(f"■ 已抑制 {tot} 條 — 這是牆上的洞，真陽性也可能躲在裡面")
+        for k, v in sorted(suppressed.items(), key=lambda x: -x[1]):
+            print(f"    {v:5}  {k}")
+        print("    抑制規則在 dbp 的 URLISH / DEBUNK。覺得漏抓就去看那兩條，別信這裡的綠。\n")
+
+    if not findings:
+        print("✓ 沒掃到死引用 / 死 commit / 腐朽宣稱。（但看上面抑制了幾條）\n")
+        return 0
+
+    print("處置順序（先砍後修 —— 刪掉比補證據便宜）：")
+    print("  1. 腐朽又大的檔：問『這份還有人讀嗎』，沒有就刪，不要更新它")
+    print("  2. 死引用：宣稱指向不存在的東西 → 刪那句，不是去把檔案生出來")
+    print("  3. 死 commit：查不到就是幻覺，整句刪掉\n")
+
+    if record:
+        for f in findings:
+            add(f"sweep {os.path.basename(root)}: {f}", where=root,
+                who="machine", tags="sweep,cleanup")
+        print(f"已收進陰陽眼（{len(findings)} 筆）\n")
+    return 1
+
+
+def fix(rid, text):
+    """補解法：append 一筆 fix 記錄。不改寫舊行 —— append-only 才安全。"""
+    return add(f"[fix of {rid}] {text}", who="ai", tags="fix")
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+    cmd = argv[0]
+    if cmd == "ls":
+        return ls(int(argv[1]) if len(argv) > 1 else 20)
+    if cmd == "find":
+        return find(" ".join(argv[1:])) if len(argv) > 1 else find("")
+    if cmd == "stats":
+        return stats()
+    if cmd == "risk":
+        return risk(argv[1]) if len(argv) > 1 else 0
+    if cmd == "rules":
+        return rules(int(argv[1]) if len(argv) > 1 else 2)
+    if cmd == "open":
+        if len(argv) == 1:
+            return list_open()
+        what, where, blocked, tags = [], None, None, None
+        i = 1
+        while i < len(argv):
+            a = argv[i]
+            if a in ("-w", "--where") and i + 1 < len(argv):
+                where = argv[i + 1]; i += 2
+            elif a in ("-b", "--blocked") and i + 1 < len(argv):
+                blocked = argv[i + 1]; i += 2
+            elif a in ("-t", "--tags") and i + 1 < len(argv):
+                tags = argv[i + 1]; i += 2
+            else:
+                what.append(a); i += 1
+        return open_item(" ".join(what), where, blocked, tags)
+    if cmd == "done":
+        if len(argv) < 2:
+            print("用法: dbp done <id> [\"怎麼解的\"]", file=sys.stderr)
+            return 2
+        return done(argv[1], " ".join(argv[2:]))
+    if cmd == "sweep":
+        rest = [a for a in argv[1:] if a != "--record"]
+        return sweep(rest[0] if rest else ".", record="--record" in argv)
+    if cmd == "fix":
+        if len(argv) < 3:
+            print("用法: dbp fix <id> \"怎麼解的\"", file=sys.stderr)
+            return 2
+        return fix(argv[1], " ".join(argv[2:]))
+
+    # 預設就是記一筆 —— 最常用的動作不該需要子指令
+    what, where, who, tags, ev = [], None, "ai", None, None
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a in ("-w", "--where") and i + 1 < len(argv):
+            where = argv[i + 1]; i += 2
+        elif a in ("-k", "--who") and i + 1 < len(argv):
+            who = argv[i + 1]; i += 2
+        elif a in ("-t", "--tags") and i + 1 < len(argv):
+            tags = argv[i + 1]; i += 2
+        elif a in ("-e", "--evidence") and i + 1 < len(argv):
+            ev = argv[i + 1]; i += 2
+        else:
+            what.append(a); i += 1
+    if not what:
+        print("用法: dbp \"描述\" [-w 位置] [-k ai|human|machine] [-t 標籤]", file=sys.stderr)
+        return 2
+    return add(" ".join(what), where, who, tags, ev)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

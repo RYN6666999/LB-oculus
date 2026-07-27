@@ -1,0 +1,112 @@
+#!/opt/homebrew/bin/python3
+"""dbp-autocapture — PostToolUse hook：指令失敗自動收進 coding 陰陽眼。
+
+為什麼需要這支（根因，有資料）：
+  鐵律三上線當天統計 28 筆紀錄，只有 25% 是「當場記錄」，75% 是事後批次補登，
+  而批次只發生在兩個時刻：做完工具時、被 Ryan 罵時。
+
+  原因不是健忘，是機制：**記錄發生在停下來的時候，bug 發現在沒停下來的時候。**
+  發現 bug 時人在一條鏈上（查→驗→修→再驗），記錄是岔出去的一步，鏈越長越會被吞。
+
+  這跟同一天最惡質那隻鬼是同一類 —— pre-commit 懸空 symlink 能死那麼久，
+  就是因為它依賴有人記得叫它。**靠自律的閘 = 沒有閘。**
+
+  所以把呼叫權從 AI 手上拿走：harness 執行這支，不是 AI 決定要不要跑。
+
+設計約束：
+  · **永遠 exit 0。** 會擋住工作的 hook，最後一定會被關掉。
+  · **不認得的 payload 形狀不猜。** 存一份樣本到 _unknown-payload.json，
+    下次有人能照真實形狀修，而不是繼續猜。（鐵律一：讀真值，別假設）
+  · 只記真失敗，不記噪音。
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+DIR = Path(os.environ.get("DEBUGPEDIA_DIR", Path.home() / ".debugpedia"))
+DBP = Path.home() / ".local" / "bin" / "dbp"
+
+# 這些非零退出是「查詢沒中」不是「壞了」，記了只會變雜訊
+BENIGN = re.compile(r"^(grep|rg|find|test|\[|diff|cmp|git diff|git grep)\b")
+# 探測性質的失敗（我自己在驗東西）也不記
+PROBE = re.compile(r"\bdbp\b|hook-payload|--dry-run|--collect-only")
+
+
+def _dig(obj, keys, depth=0):
+    """在巢狀 dict 裡找第一個命中的 key。payload 形狀未知時比寫死路徑安全。"""
+    if depth > 4 or not isinstance(obj, dict):
+        return None
+    for k in keys:
+        if k in obj and not isinstance(obj[k], (dict, list)):
+            return obj[k]
+    for v in obj.values():
+        if isinstance(v, dict):
+            r = _dig(v, keys, depth + 1)
+            if r is not None:
+                return r
+    return None
+
+
+def main():
+    try:
+        raw = sys.stdin.read()
+        data = json.loads(raw) if raw.strip() else {}
+    except Exception:
+        return 0
+
+    cmd = _dig(data, ("command", "cmd")) or ""
+    out = str(_dig(data, ("stdout", "output", "content", "result", "stderr")) or "")
+
+    code = _dig(data, ("exit_code", "exitCode", "returncode", "status"))
+    if code is None:
+        m = re.search(r"[Cc]ommand failed with exit code:?\s*(\d+)", out)
+        code = int(m.group(1)) if m else 0
+    try:
+        code = int(code)
+    except (TypeError, ValueError):
+        code = 0
+
+    # 形狀完全認不出來 → 留樣本給下次修，不亂猜
+    if not cmd and not out:
+        try:
+            DIR.mkdir(parents=True, exist_ok=True)
+            p = DIR / "_unknown-payload.json"
+            if not p.exists():
+                p.write_text(raw[:8000], encoding="utf-8")
+        except Exception:
+            pass
+        return 0
+
+    cmd = str(cmd).strip()
+    if code == 0 or not cmd:
+        return 0
+    if BENIGN.match(cmd) or PROBE.search(cmd):
+        return 0
+
+    err = ""
+    for line in out.splitlines():
+        s = line.strip()
+        if s and re.search(r"error|Error|ERROR|fail|Fail|Traceback|not found|No such", s):
+            err = s[:120]
+            break
+
+    what = f"指令失敗 exit={code}: {cmd[:100]}"
+    args = [str(DBP), what, "-k", "machine", "-t", "auto,exit-nonzero"]
+    if err:
+        args += ["-e", err]
+    try:
+        subprocess.run(args, capture_output=True, timeout=8)
+    except Exception:
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception:
+        sys.exit(0)      # 絕不擋住呼叫者
