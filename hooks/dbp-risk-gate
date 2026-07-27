@@ -19,6 +19,7 @@
 import json
 import os
 import subprocess
+import time
 import sys
 
 DBP = os.path.expanduser("~/.local/bin/dbp")
@@ -39,6 +40,20 @@ def main():
     path = ti.get("file_path") or ti.get("path") or ti.get("notebook_path") or ""
     if not path or not os.path.exists(DBP):
         return 0
+
+    # 記下這次編輯 —— 鐵律二機械化的原料。
+    # 「產出者不得自驗」以前只是句口號：沒有任何東西能證明改完之後
+    # 真的跑過什麼。2026-07-27 就是這樣把 topology.yaml 的 yaml 語法改壞
+    # 然後直接往下走的。有了這份 log，pre-commit 就能問：
+    # 「這個檔改完之後，有沒有任何指令實際碰過它？」
+    try:
+        d = os.path.expanduser(os.environ.get("DEBUGPEDIA_DIR", "~/.debugpedia"))
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "_edits.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps({"ts": time.time(), "path": os.path.abspath(path),
+                                "tool": tool}, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
     try:
         p = subprocess.run([DBP, "risk", str(path)],

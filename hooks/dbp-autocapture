@@ -82,6 +82,22 @@ def main():
         return 0
 
     cmd = str(cmd).strip()
+
+    # 記下每一條跑過的指令（成功失敗都記）—— 鐵律二機械化的另一半原料。
+    # 配合 _edits.jsonl，pre-commit 才答得出「這個檔改完後有沒有被實際執行過」。
+    # 沒有這份 log，「換一條路驗」永遠只能是口號。
+    if cmd:
+        try:
+            d = os.path.expanduser(os.environ.get("DEBUGPEDIA_DIR", "~/.debugpedia"))
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, "_runs.jsonl"), "a", encoding="utf-8") as f:
+                f.write(json.dumps({"ts": __import__("time").time(),
+                                    "cmd": cmd[:500], "code": code,
+                                    "cwd": data.get("cwd") or ""},
+                                   ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+
     if code == 0 or not cmd:
         return 0
     if BENIGN.match(cmd) or PROBE.search(cmd):

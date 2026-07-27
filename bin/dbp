@@ -198,6 +198,61 @@ def find(q):
     return 0
 
 
+# 這些指令跑起來就算「有實際執行過」，不必提到檔名
+VERIFY_CMD = re.compile(
+    r"\b(pytest|python3?\s+-m\s+\w+|python3?\s+\S+\.py|node|npm\s+(test|run)|bun\s+test|"
+    r"cargo\s+(test|build|check)|go\s+test|tsc|eslint|ruff|mypy|shellcheck|make|"
+    r"probe\.py|lint\.py|curl|git\s+hook\s+run|bash\s+\S+\.sh|sh\s+\S+\.sh)\b")
+
+
+def _jsonl(name):
+    p = DIR / name
+    if not p.exists():
+        return []
+    out = []
+    for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if line:
+            try:
+                out.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+    return out
+
+
+def unverified(paths):
+    """鐵律二的機械化：這些檔改完之後，到底有沒有任何指令實際碰過？
+
+    以前「產出者不得自驗 / 換一條路驗」只是口號 —— 沒有任何東西能證明
+    改完之後真的跑過什麼。2026-07-27 就是這樣把一份 yaml 的語法改壞
+    然後直接往下走，靠運氣才發現。
+
+    判定（刻意寬鬆，寧可放過也不亂擋 —— 假紅比沒有更糟）：
+      最後一次編輯之後，只要有任何一條指令
+        · 提到這個檔名，或
+        · 是公認的驗證指令（pytest / lint / build / curl …）
+      就算驗過。真的什麼都沒跑，才報。
+    """
+    edits = _jsonl("_edits.jsonl")
+    runs = _jsonl("_runs.jsonl")
+    if not edits:
+        return []          # 沒有編輯紀錄就不能亂指控（hook 可能沒裝）
+    bad = []
+    for p in paths:
+        ap = os.path.abspath(os.path.expanduser(p))
+        base = os.path.basename(ap)
+        mine = [e for e in edits if e.get("path") == ap]
+        if not mine:
+            continue       # 這個檔不是這台機器上編輯的，無從判斷
+        last = max(e.get("ts", 0) for e in mine)
+        after = [r for r in runs if r.get("ts", 0) > last]
+        if any(base in (r.get("cmd") or "") or VERIFY_CMD.search(r.get("cmd") or "")
+               for r in after):
+            continue
+        bad.append((p, len(after)))
+    return bad
+
+
 def risk(target):
     """動手前問一句：這個檔／這類操作，以前在哪裡摔過？
 
