@@ -36,14 +36,15 @@ DBP=""
 for c in ~/.local/bin/dbp /usr/local/bin/dbp /opt/homebrew/bin/dbp; do
   if [ -x "$c" ]; then
     # test -x 不夠（install.sh:16 的教訓），要真的跑得起來
-    if "$c" anchor >/dev/null 2>&1; then
+    # 用裸 dbp（印 help exit 0）探活，不用 anchor（鏈斷時 anchor return 1）
+    if "$c" >/dev/null 2>&1; then
       DBP="$c"; break
     fi
   fi
 done
 [ -n "$DBP" ] || die "找不到能執行的 dbp（cron PATH 比 shell 窄）"
 
-# ── 跑 dbp anchor ────────────────────────────────────────────────────
+# ── 跑 dbp anchor（鏈斷時這裡會 die，死因會是「鏈斷」不是「找不到 dbp」）─
 ANCHOR_OUT="$("$DBP" anchor 2>&1)" || die "dbp anchor 失敗: $(printf '%s' "$ANCHOR_OUT" | tail -1)"
 
 # ── 寫入 audit/ANCHORS.md ───────────────────────────────────────────
@@ -59,8 +60,8 @@ printf '%s\n' "$ANCHOR_OUT" >> "$ANCHORS"
 # ── commit & push ────────────────────────────────────────────────────
 cd "$REPO_ROOT" || die "無法 cd 到 repo root: $REPO_ROOT"
 
-# 只有 ANCHORS.md 有變動才 commit
-if git diff --quiet "$ANCHORS" 2>/dev/null; then
+# 判斷是否有變動：用 git status --porcelain（git diff --quiet 對未追蹤檔回 0）
+if ! git status --porcelain "$ANCHORS" 2>/dev/null | grep -q .; then
   beat ok "無變動（錨點內容與上次一致）"
   printf 'anchor: ✓ 無變動，跳過 commit\n'
   exit 0
