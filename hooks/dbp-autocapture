@@ -20,6 +20,7 @@
   · 只記真失敗，不記噪音。
 """
 
+import hashlib
 import json
 import os
 import re
@@ -90,11 +91,22 @@ def main():
         try:
             d = os.path.expanduser(os.environ.get("DEBUGPEDIA_DIR", "~/.debugpedia"))
             os.makedirs(d, exist_ok=True)
-            with open(os.path.join(d, "ledger/_runs.jsonl"), "a", encoding="utf-8") as f:
-                f.write(json.dumps({"ts": __import__("time").time(),
-                                    "cmd": cmd[:500], "code": code,
-                                    "cwd": data.get("cwd") or ""},
-                                   ensure_ascii=False) + "\n")
+            rec = {"ts": __import__("time").time(),
+                   "cmd": cmd[:500], "code": code,
+                   "cwd": data.get("cwd") or ""}
+            lp = os.path.join(d, "ledger/_runs.jsonl")
+            try:
+                if os.path.exists(lp) and os.path.getsize(lp) > 0:
+                    with open(lp, "rb") as fh:
+                        rlines = fh.read().splitlines()
+                    if rlines:
+                        rec["prev"] = hashlib.sha256(rlines[-1]).hexdigest()
+            except Exception:
+                pass
+            if "prev" not in rec:
+                rec["prev"] = "genesis"
+            with open(lp, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         except Exception:
             pass
 

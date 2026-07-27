@@ -31,6 +31,7 @@
     dbp fix <id> "..."  補上後來怎麼解的
 """
 
+import hashlib
 import json
 import os
 import re
@@ -527,6 +528,130 @@ def fix(rid, text):
     return add(f"[fix of {rid}] {text}", who="ai", tags="fix")
 
 
+# ── 雜湊鏈 ──────────────────────────────────────────────────────────
+# ledger 每筆紀錄含 prev = 前一筆整行 JSON 的 sha256。寫入當下算，不事後補。
+# 第一筆為 "genesis"。鏈在寫的當下建立，讀的時候驗證。
+
+
+def _chain_prev(path):
+    """回傳 path 最後一筆的 sha256（hex），空檔回 "genesis"。"""
+    try:
+        txt = Path(path).read_text(encoding="utf-8", errors="replace").strip()
+        if not txt:
+            return "genesis"
+        last = txt.splitlines()[-1].strip()
+        if not last:
+            return "genesis"
+        return hashlib.sha256(last.encode("utf-8")).hexdigest()
+    except (FileNotFoundError, OSError):
+        return "genesis"
+
+
+def _read_chain(path):
+    """走完整條鏈，回傳 (ok, 斷行, 行數, [hash列表])。
+    ok=True：鏈完整；ok=False：斷在第 n 行。
+    既有無 prev 的舊紀錄視為接地前資料，跳過不驗。
+    """
+    try:
+        lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+    except FileNotFoundError:
+        return True, None, 0, []
+    lines = [l.strip() for l in lines if l.strip()]
+    n = 0
+    hashes = []
+    chain_started = False
+    for line in lines:
+        n += 1
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            return False, n, n, hashes
+        h = hashlib.sha256(line.encode("utf-8")).hexdigest()
+        prev = rec.get("prev", "")
+        if not prev:
+            # 接地前舊紀錄：跳過鏈驗證
+            hashes.append(h)
+            continue
+        if not chain_started:
+            chain_started = True
+            if prev != "genesis":
+                return False, n, n, hashes
+        else:
+            expected = hashlib.sha256(lines[n-2].encode("utf-8")).hexdigest()
+            if prev != expected:
+                return False, n, n, hashes
+        hashes.append(h)
+    return True, None, n, hashes
+
+
+def anchor(human=False):
+    """印出錨點字串。預設一行給機器；--human 給 Ryan 貼手機。"""
+    p = Path(DIR) / "ledger" / "_edits.jsonl"
+    ok, broken, n, hashes = _read_chain(str(p))
+    if n == 0:
+        print("錨點：空鏈（尚無紀錄）")
+        return 0
+    last_hash = hashes[-1] if hashes else "genesis"
+    ts = datetime.now(timezone.utc)
+
+    # 找上一次人工錨點
+    human_prev = "genesis"
+    human_prev_n = 0
+    if human:
+        try:
+            for line in Path(str(p)).read_text().splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                rec = json.loads(line)
+                if rec.get("anchored"):
+                    h = hashlib.sha256(line.encode("utf-8")).hexdigest()
+                    if h in hashes:
+                        idx = hashes.index(h)
+                        human_prev = h[:12]
+                        human_prev_n = idx + 1
+        except Exception:
+            pass
+
+    if human:
+        count_since = n - human_prev_n
+        print(f"🔗 錨點 · {ts.strftime('%Y-%m-%d %H:%M UTC')}")
+        print(f"   目前 hash: {last_hash[:12]}  （第 {n} 筆）")
+        print(f"   上次人工: {human_prev[:12]}  （第 {human_prev_n} 筆，相隔 {count_since} 筆）")
+        print(f"   鏈完整: {'✓' if ok else '✗ 斷在第 {broken} 行!'}")
+    else:
+        print(f"{last_hash[:12]}  {ts.strftime('%Y-%m-%dT%H:%M:%SZ')}")
+    return 0 if ok else 1
+
+
+def verify_chain(anchor_hash=None):
+    """驗證鏈完整性。--anchor <hash> 檢查該 hash 是否在鏈上。"""
+    p = Path(DIR) / "ledger" / "_edits.jsonl"
+    ok, broken, n, hashes = _read_chain(str(p))
+
+    if n == 0:
+        print("verify-chain: 鏈為空")
+        return 0 if not anchor_hash else 1
+
+    if not ok:
+        print(f"verify-chain: ✗ 斷在第 {broken} 行")
+        return 1
+
+    last_hash = hashes[-1]
+    print(f"verify-chain: ✓ {n} 筆 · 末筆 hash {last_hash[:12]}")
+
+    if anchor_hash:
+        found = any(h.startswith(anchor_hash) for h in hashes)
+        if found:
+            print(f"             ✓ 錨點 {anchor_hash[:12]} 在鏈上")
+            return 0
+        else:
+            print(f"             ✗ 錨點 {anchor_hash[:12]} 不在鏈上——整本被換過")
+            return 1
+
+    return 0
+
+
 def main(argv):
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__)
@@ -584,6 +709,19 @@ def main(argv):
                 print(f"    {p}  — 編輯後只跑了 {n} 條指令，無驗證器")
             print()
         return 1 if bad else 0
+    if cmd == "_chain-prev":
+        if len(argv) < 2:
+            print("用法: dbp _chain-prev <ledger/檔名>", file=sys.stderr)
+            return 2
+        return print(_chain_prev(str(DIR / argv[1]))) or 0
+    if cmd == "anchor":
+        return anchor(human="--human" in argv or "-H" in argv)
+    if cmd == "verify-chain":
+        anchor_hash = None
+        for i, a in enumerate(argv[1:], 1):
+            if a == "--anchor" and i < len(argv) - 1:
+                anchor_hash = argv[i + 1]
+        return verify_chain(anchor_hash)
 
     # 預設就是記一筆 —— 最常用的動作不該需要子指令
     what, where, who, tags, ev = [], None, "ai", None, None
