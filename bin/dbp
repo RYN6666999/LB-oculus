@@ -572,6 +572,9 @@ def chain_append(data, ledger_name):
     
     ledger_name='edits' → _edits.jsonl, 'runs' → _runs.jsonl。
     若 data 含 'path'（現存檔案），自動補 mtime 與 sha256。
+    
+    接地處理：若 prev="genesis" 且已有舊資料（無 prev），
+    在先寫一筆 chain_start 標記，讓 verify 知道從何起算。
     """
     ledger_file = _ledger_file(ledger_name)
     data["prev"] = _chain_prev(str(ledger_file))
@@ -589,6 +592,20 @@ def chain_append(data, ledger_name):
             pass
     try:
         ledger_file.parent.mkdir(parents=True, exist_ok=True)
+        # 接地標記：首次在舊資料上建鏈時，先寫 chain_start
+        if data.get("prev") == "genesis":
+            last = _last_line(str(ledger_file))
+            if last is not None:
+                try:
+                    rec = json.loads(last)
+                    if not rec.get("prev") and not rec.get("chain_start"):
+                        marker = {"ts": __import__("time").time(),
+                                  "chain_start": True,
+                                  "note": "接地標記：此前紀錄無雜湊鏈，verify 從此起算"}
+                        with ledger_file.open("a", encoding="utf-8") as f:
+                            f.write(json.dumps(marker, ensure_ascii=False) + "\n")
+                except (json.JSONDecodeError, TypeError):
+                    pass
         with ledger_file.open("a", encoding="utf-8") as f:
             f.write(json.dumps(data, ensure_ascii=False) + "\n")
         return True
@@ -598,41 +615,53 @@ def chain_append(data, ledger_name):
 
 
 def _read_chain(path):
-    """走完整條鏈，回傳 (ok, 斷行行號, 總行數, 鏈筆數, [chain hash列表])。
+    """走完整條鏈，回傳 (ok, 斷行行號, 總行數, 接地前筆數, 鏈筆數, [chain hash列表])。
     ok=True：鏈完整；ok=False：斷在第 n 行。
     既有無 prev 的舊紀錄視為接地前資料，跳過不驗。
+    若遇到 {"chain_start":true,...} 標記，從該行起算鏈起點。
     回傳的 hashes 只含鏈紀錄（不含接地前舊資料）。
     """
     try:
         lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
     except FileNotFoundError:
-        return True, None, 0, 0, []
+        return True, None, 0, 0, 0, []
     lines = [l.strip() for l in lines if l.strip()]
     n = 0
+    pre_chain = 0
     chain_n = 0
     hashes = []
     chain_started = False
+    in_chain = False
     for line in lines:
         n += 1
         try:
             rec = json.loads(line)
         except json.JSONDecodeError:
-            return False, n, n, chain_n, hashes
+            return False, n, n, pre_chain, chain_n, hashes
         h = hashlib.sha256(line.encode("utf-8")).hexdigest()
         prev = rec.get("prev", "")
+        if rec.get("chain_start"):
+            chain_started = True
+            in_chain = True
+            pre_chain = n - 1  # 此行之前都算接地前
+            continue
         if not prev:
             continue
         chain_n += 1
         if not chain_started:
             chain_started = True
+            in_chain = True
+            pre_chain = n - 1
             if prev != "genesis":
-                return False, n, chain_n, chain_n, hashes
+                return False, n, n, pre_chain, chain_n, hashes
         else:
             expected = hashlib.sha256(lines[n-2].encode("utf-8")).hexdigest()
             if prev != expected:
-                return False, n, chain_n, chain_n, hashes
+                return False, n, n, pre_chain, chain_n, hashes
         hashes.append(h)
-    return True, None, n, chain_n, hashes
+    if not chain_started:
+        pre_chain = n  # 整份都沒有鏈資料
+    return True, None, n, pre_chain, chain_n, hashes
 
 
 def _ledger_file(which="edits"):
@@ -648,7 +677,7 @@ def anchor(human=False, which="edits", all_ledgers=False):
     rc = 0
     for w in targets:
         p = _ledger_file(w)
-        ok, broken, n, chain_n, hashes = _read_chain(str(p))
+        ok, broken, n, pre_chain, chain_n, hashes = _read_chain(str(p))
         label = {"edits": "edits", "runs": "runs"}.get(w, w)
         if n == 0:
             print(f"錨點({label})：空鏈（尚無紀錄）")
@@ -692,7 +721,7 @@ def verify_chain(anchor_hash=None, which="edits"):
     """
     p = _ledger_file(which)
     label = {"edits": "edits", "runs": "runs"}.get(which, which)
-    ok, broken, n, chain_n, hashes = _read_chain(str(p))
+    ok, broken, n, pre_chain, chain_n, hashes = _read_chain(str(p))
 
     if n == 0:
         print(f"verify-chain({label}): 鏈為空")
@@ -702,8 +731,15 @@ def verify_chain(anchor_hash=None, which="edits"):
         print(f"verify-chain({label}): ✗ 斷在第 {broken} 行")
         return 1
 
+    coverage = chain_n / n if n > 0 else 0
     last_hash = hashes[-1] if hashes else "genesis"
-    print(f"verify-chain({label}): ✓ {chain_n} 筆 · 末筆 hash {last_hash[:12]}")
+    pre_msg = f" · chain_start 前 {pre_chain} 筆不在鏈上" if pre_chain > 0 else ""
+    print(f"verify-chain({label}): ✓ 已驗 {chain_n} / 總 {n} 筆（覆蓋率 {coverage:.0%}{pre_msg}）")
+    print(f"                       末筆 hash {last_hash[:12]}")
+
+    if coverage < 0.9 and chain_n > 0:
+        print(f"             ✗ 鏈覆蓋率不足（{coverage:.0%}），疑似斷層或舊資料未遷移")
+        return 1
 
     if anchor_hash:
         parts = anchor_hash.split(":")

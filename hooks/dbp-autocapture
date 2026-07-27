@@ -93,7 +93,7 @@ def main():
                    "cmd": cmd[:500], "code": code,
                    "cwd": data.get("cwd") or ""}
             subprocess.run([str(DBP), "_chain-append", "runs"],
-                           input=json.dumps(rec, ensure_ascii=False),
+                           input=json.dumps(rec, ensure_ascii=False).encode("utf-8"),
                            capture_output=True, timeout=5)
         except Exception:
             pass

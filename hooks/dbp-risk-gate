@@ -49,7 +49,7 @@ def main():
         ap = os.path.abspath(path)
         rec = {"ts": time.time(), "path": ap, "tool": tool}
         subprocess.run([DBP, "_chain-append", "edits"],
-                       input=json.dumps(rec, ensure_ascii=False),
+                       input=json.dumps(rec, ensure_ascii=False).encode("utf-8"),
                        capture_output=True, timeout=5)
     except Exception:
         pass
