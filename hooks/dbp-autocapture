@@ -90,7 +90,7 @@ def main():
         try:
             d = os.path.expanduser(os.environ.get("DEBUGPEDIA_DIR", "~/.debugpedia"))
             os.makedirs(d, exist_ok=True)
-            with open(os.path.join(d, "_runs.jsonl"), "a", encoding="utf-8") as f:
+            with open(os.path.join(d, "ledger/_runs.jsonl"), "a", encoding="utf-8") as f:
                 f.write(json.dumps({"ts": __import__("time").time(),
                                     "cmd": cmd[:500], "code": code,
                                     "cwd": data.get("cwd") or ""},

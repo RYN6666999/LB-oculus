@@ -67,6 +67,8 @@ def _all():
     if not DIR.is_dir():
         return rows
     for f in sorted(DIR.glob("*.jsonl")):
+        if f.name.startswith("_"):
+            continue
         for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
             line = line.strip()
             if not line:
@@ -206,7 +208,7 @@ VERIFY_CMD = re.compile(
 
 
 def _jsonl(name):
-    p = DIR / name
+    p = DIR / "ledger" / name
     if not p.exists():
         return []
     out = []
@@ -569,6 +571,19 @@ def main(argv):
             print("用法: dbp fix <id> \"怎麼解的\"", file=sys.stderr)
             return 2
         return fix(argv[1], " ".join(argv[2:]))
+    if cmd == "unverified":
+        if len(argv) < 2:
+            print("用法: dbp unverified <檔案...>", file=sys.stderr)
+            return 2
+        bad = unverified(argv[1:])
+        if not bad:
+            print("\n✓ 全數已驗證\n")
+        else:
+            print(f"\n⚠️  未驗證 {len(bad)} 檔")
+            for p, n in bad:
+                print(f"    {p}  — 編輯後只跑了 {n} 條指令，無驗證器")
+            print()
+        return 1 if bad else 0
 
     # 預設就是記一筆 —— 最常用的動作不該需要子指令
     what, where, who, tags, ev = [], None, "ai", None, None
