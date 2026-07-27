@@ -1,4 +1,4 @@
-#!/opt/homebrew/bin/python3
+#!/usr/bin/env python3
 """dbp-risk-gate — PreToolUse hook：動手改檔前，把這個檔的前科丟出來。
 
 這是把陰陽眼從「亞健康」推到「主動預測」的那一步。

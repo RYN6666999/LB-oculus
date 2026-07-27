@@ -1,4 +1,4 @@
-#!/opt/homebrew/bin/python3
+#!/usr/bin/env python3
 """dbp-autocapture — PostToolUse hook：指令失敗自動收進 coding 陰陽眼。
 
 為什麼需要這支（根因，有資料）：
