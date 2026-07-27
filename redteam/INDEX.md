@@ -2,12 +2,12 @@
 
 **自動產生 —— 不要手改。** 來源是 `attacks/*.sh` 的檔頭宣告。
 
-> 產生於 2026-07-27T15:03:43+00:00
+> 產生於 2026-07-27T15:22:51+00:00
 > 重建：`python3 redteam/index.py` · 檢查過期：`python3 redteam/index.py --check`
 
 ---
 
-共 **11** 支 · 預期 BREACH（洞還在）**7** 支 · 監視 harness 自己的 canary **2** 支
+共 **12** 支 · 預期 BREACH（洞還在）**8** 支 · 監視 harness 自己的 canary **2** 支
 
 > BREACH 是綠色的。洞還在 = 符合預期。洞消失才要停下來查。
 
@@ -154,6 +154,22 @@
 **為什麼值得一支攻擊**：「從沒跑過」和「每天跑但每次都失敗」在使用者眼裡長得一模一樣 —— 什麼都沒發生。
 
 單獨跑：`./redteam/run.sh 009`
+
+---
+
+## `010-ledger-dir-swappable.sh`
+
+| | |
+|---|---|
+| **EXPECT** | `BREACH` |
+| **標的** | `~/.debugpedia/ledger/（目錄層 — 002 只驗了檔案層）` |
+| **相關文件** | `audit/2026-07-27-verification.md` · `audit/LEDGER-SNAPSHOT.md` · `plan/001-restore-executability.md` · `plan/002-llm-generalizer-cron.md` · `plan/README.md` |
+
+**宣稱**：sappnd 鎖檔案不夠：mv ledger /tmp/ 再建空目錄，整本帳無聲消失
+
+**為什麼值得一支攻擊**：檔案鎖得再好，目錄沒鎖等於沒鎖。這就是 002 自己寫的手段。
+
+單獨跑：`./redteam/run.sh 010`
 
 ---
 

@@ -51,18 +51,7 @@ harness 抓到了自己被閹割。
 
 ## 目前的攻擊
 
-| # | 標的 | EXPECT | 宣稱 |
-|---|---|---|---|
-| 001 | `install.sh:16` | BREACH | 印 6 個 ✓ 並 exit 0，而掛載點實際 exit 127 |
-| 002 | `*.jsonl` | BREACH | 帳本可偽造 / 改寫 / 刪行，dbp 全程無感 |
-| 003 | `dbp:202` | BREACH | `pytest --version` 這種空殼指令算「驗過」 |
-| 004 | `risk-gate:41` | BREACH | dbp 缺席 → 帳本 B 歸零且不留痕（共同失效點） |
-| 005 | `dbp:223` | BREACH | `unverified()` 零路由，兩本帳從未對帳 |
-| 006 | `dbp:361` | BREACH | 看不見無副檔名的可執行檔 —— 包含它自己 |
-| 007 | `dbp:69/183` | BREACH | `_edits.jsonl` 一存在，`dbp ls` 就 KeyError（且 exit 仍 0） |
-| 008 | `dbp:573` | BREACH | 打錯的子指令被寫成一筆 bug，污染帳本 |
-| 900 | （harness） | SEALED | 不憑空生洞 |
-| 901 | （harness） | BROKEN | 三態判定沒壞 |
+完整攻擊清單與當前 EXPECT 狀態見 [`INDEX.md`](INDEX.md)。
 
 沙盒：每支跑在 `mktemp -d` 的 repo 複本 + 空 ledger（`DEBUGPEDIA_DIR`），
 改壞它不影響真 repo，也不污染 `~/.debugpedia`。
