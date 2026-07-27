@@ -2,113 +2,96 @@
 
 > **自動產生 —— 不要手改。** `python3 audit/export.py` 重新推導。
 
-> 產生於 2026-07-27T15:04:06+00:00 · 來源 `/home/user/.debugpedia`
+> 產生於 2026-07-27T16:22:00+00:00 · 來源 `/Users/ryan/.debugpedia`
 
 > 這份證明「條目在 ledger 裡」，**不證明條目是真的**。
 > 真假由 `audit/2026-07-27-verification.md` 的可重跑指令負責。
 
 
-## 錯誤 41 條（鐵律三 A 類）
+## 錯誤 37 條（鐵律三 A 類）
 
 | # | 優先 | 什麼 | 位置 | 標籤 |
 |---|---|---|---|---|
-| 1 | P0 | install.sh 印 6 個綠勾且 exit 0，但 dbp/hooks 全部 exit 127 不可執行 —— 綠勾由 test -e 定義而非由執行定義 | `install.sh:16` | install,false-green,P0,self-violation |
-| 2 | P0 | shebang 硬寫 /opt/homebrew/bin/python3，非 macOS 環境全套靜默死亡 | `bin/dbp:1,hooks/dbp-risk-gate:1,hooks/dbp-autocapture:1` | portability,shebang,P0 |
-| 3 | P0 | _all() 的 glob(*.jsonl) 把 _edits/_runs ledger 讀成 debug 紀錄，ls/find 噴 KeyError: id | `bin/dbp:69` | glob,crash,P0 |
-| 4 | P0 | stats 灌水 3.5 倍：4 筆真 bug 印成 14 筆，10 筆幽靈掛在 who=? | `bin/dbp:350` | metrics,inflation,P0 |
-| 5 | P0 | fix() append [fix of id] 但無記錄有 fix 欄位，ls 的✔/find 的→/stats 的%永遠不出現，且 fix 自己被算成新錯誤 | `bin/dbp:523` | metrics,dead-indicator,P0 |
-| 6 | P0 | risk-gate 只認 Edit\|Write\|NotebookEdit\|MultiEdit，Bash heredoc/sed -i/python - <<EOF 改檔完全不進帳本也不觸發前科 | `hooks/dbp-risk-gate:26` | gate,bypass,P0 |
-| 7 | P0 | 帳本 B 依賴帳本 A：risk-gate 的 exists(DBP) 檢查在記帳之前，dbp 一斷兩本帳同時歸零 —— 複式簿記出現共同失效點 | `hooks/dbp-risk-gate:41` | double-entry,common-failure,P0,self-violation |
-| 8 | P0 | 帳本可篡改且篡改不可觀測：偽造假 pytest 證據、grep -v 滅證、整本移走三種攻擊全成功，dbp stats 對帳本消失零抗議 | `~/.debugpedia/` | double-entry,tamper,observability,P0,self-violation |
-| 9 | P0 | repo 零測試 —— 這是上述 17 條的共同成因，不是第 18 條 | `.` | no-test,root-cause,P0 |
-| 10 | P0 | dbp ls 崩潰 KeyError 之後 exit code 仍為 0 —— 自動化與 CI 完全偵測不到崩潰 | `bin/dbp:183` | P0,exit-code,silent-failure |
-| 11 | P0 | plan/001 提議的 verify() 用 "$1" --help 驗證，但 hooks 讀 stdin：dbp-risk-gate --help 在無 stdin 時永久掛住（實測 >120s），install.sh 會直接凍結。這是預期 bug #1 命中且比預期嚴重 | `plan/001-restore-executability.md` | P0,plan-001,hang,verify-design |
-| 12 | P1 | unverified() 是死碼，main() 零路由；但 dbp/risk-gate/autocapture 三處宣稱 pre-commit 會用它，repo 內零實作 | `bin/dbp:223` | dead-code,phantom-claim,P1 |
-| 13 | P1 | VERIFY_CMD 只比對指令字串不看 exit code：echo pytest / # pytest / printf curl 全被判定已驗過 | `bin/dbp:202` | verification,forgeable,P1 |
-| 14 | P1 | _runs.jsonl 明文存 cmd[:500]，Stripe live key 與 psql 連線字串落盤，權限 644，無遮罩無輪替無上限 | `hooks/dbp-autocapture:94` | secrets,security,P1 |
-| 15 | P1 | README 教的 matcher 漏 MultiEdit，與程式碼 WATCH 集合不一致 —— 同一事實抄兩處已漂移 | `README.md:83,hooks/dbp-risk-gate:26` | drift,doc-code-mismatch,P1,self-violation |
-| 16 | P1 | risk() 的 len(stem)>3 讓 dbp（剛好3字元）永遠無前科，加上無副檔名 → risk 對自己三個核心檔完全瞎 | `bin/dbp:272` | risk,self-blind,boundary,P1,self-violation |
-| 17 | P1 | main() fallthrough 把未知子指令當 what 記成新 bug：dbp unverified x 會靜默污染帳本，分母永久失真 | `bin/dbp:573` | cli,silent-pollution,P1 |
-| 18 | P1 | dbp sweep 用「掃描目標目錄」而非 repo 根解析相對路徑，掃子目錄時 redteam/index.py 被當成 redteam/redteam/index.py → 63 條假陽性（根目錄掃只有 30 條）。假紅訓練人忽略紅燈 | `bin/dbp:436` | P1,sweep,false-positive,self-violation |
-| 19 | P2 | SWEEP_EXT 只認副檔名，bin/dbp 與兩個 hook 無副檔名 → sweep 掃 3/7 檔，810 行核心碼免疫於自己的檢查 | `bin/dbp:361` | sweep,self-blind,P2,self-violation |
-| 20 | P2 | sweep 掃自己 5 報 5 假 = 100% 假陽性，而 README 自稱假紅要當 P0 修 | `bin/dbp:399` | sweep,false-positive,P2,self-violation |
-| 21 | P2 | PATHISH 的 CODE_EXT 交替把 json 排在 jsonl 前，.jsonl 被截成 .json —— 抓幻覺工具的證據欄位自己是幻覺 | `bin/dbp:370` | sweep,regex,hallucination,P2,self-violation |
-| 22 | P2 | done(rid) 不驗證 id 是否存在，dbp done <typo> 印成功 exit 0 但什麼都沒關 | `bin/dbp:134` | cli,false-success,P2 |
-| 23 | P2 | 案 001 的驗收指令引用 tests/smoke.sh，但該檔尚未存在 —— 我在批評幻影引用的同一份文件裡製造了幻影引用 | `plan/001-restore-executability.md:126` | self-violation,phantom-claim,my-own-bug |
-| 24 | P2 | [redteam] 攻擊 005 用「dbp unverified 有回應」判定功能存在 → 假 SEALED。真因是 fallthrough 把它當 bug 記進帳。有輸出 != 功能存在 | `—` | self-violation,redteam,false-green,my-own-bug |
-| 25 | P2 | [redteam] 攻擊 007 誤以為 dbp ls 崩潰的觸發條件是 open 紀錄 → 實測 open 完全正常，假 SEALED。真正觸發條件是 _edits.jsonl 存在 | `—` | self-violation,redteam,wrong-hypothesis,my-own-bug |
-| 26 | P2 | [redteam] 攻擊 006 對 dbp sweep 用 \|\| broken 判斷失敗 → sweep 找到死引用仍 exit 0，正常執行被誤判 BROKEN | `—` | self-violation,redteam,my-own-bug |
-| 27 | P2 | [redteam] index.py 的 grep_refs 只取 split('/')[-1]，~/.debugpedia/*.jsonl 只剩 jsonl 被 NOISE 濾掉 → 零鍵 → 索引印「（無）」假陰性，讓人以為這個洞沒人寫過 | `—` | self-violation,redteam,false-negative,my-own-bug |
-| 28 | P2 | [redteam] index.py 第一版用 importlib.machinery 未顯式 import → AttributeError，且 traceback 搶先於 sys.exit(3) 導致 BROKEN 訊息空白 | `—` | self-violation,redteam,my-own-bug |
-| 29 | P2 | install.sh 的 rc=$? 隔著 if 複合指令取，拿到 if 的 0 而非真實 127；有報錯但診斷指向錯方向 | `install.sh:52` | shell,exitcode,plan001 |
-| 30 | P2 | redteam attack 001 假 SEALED：grep 'exit 127' 掃整份輸出，抓到的是結尾無條件印出的說明文字 | `redteam/attacks/001-install-green-while-broken.sh` | redteam,false-green |
-| 31 | P2 | smoke A06 假斷言：照抄 plan/001 的「risk bin/dbp 有輸出」，但無副檔名走 base 比對本來就會中，驗不到 len(stem)>3 那個洞 | `tests/smoke.sh` | test,false-green |
-| 32 | P2 | plan/002 payload 驗收設計錯：grep -c 分不出「乾淨」與「什麼都沒攔到」，payload 改走 argv 就會綠著放行機密 | `plan/002-llm-generalizer-cron.md` | cron,false-green |
-| 33 | P2 | generalize.py 排除 evidence 欄位，導致遮罩正則從未被執行；驗收綠是因為東西沒送而非遮乾淨 | `cron/generalize.py` | cron,遮罩,false-green |
-| 34 | P2 | cron 心跳用 2>&1 合併後取最後一行當死因，記下的是 stdout 的「去識別化命中 2 處」進度訊息 | `cron/generalize.sh` | cron,heartbeat |
-| 35 | P2 | plan/001 自身矛盾：核心判斷寫「不修任何 bug」，驗收第 4 步卻要求 smoke baseline=0；兩者不可能同時成立 | `plan/001-restore-executability.md` | plan,自我矛盾 |
-| 36 | P2 | plan/001 驗收第 4 步的 git stash 手法無法用：tests/smoke.sh 是本案新建檔，stash 會把測試自己一起收走 | `plan/001-restore-executability.md` | plan,驗收 |
-| 37 | P2 | hooks 從 stdin 讀 JSON，dbp-risk-gate --help 在無 stdin 環境永久掛住（實測 >120 秒） | `hooks/dbp-risk-gate` | hook,hang |
-| 38 | P2 | 反向驗證手法不夠精準：只拆一道防線後行為不變，一度誤判攻擊面 5 是死碼；實際是縱深防禦（零輸出守衛 + parse_strict 空字串）互為備援 | `redteam/attacks/009-cron-silent-noop.sh` | redteam,反向驗證 |
-| 39 | P2 | redteam/run.sh 的沙盒白名單會過期：新增 cron/ 後 attack 009 缺檔 BROKEN（此次 BROKEN 是正確行為，沒謊稱 SEALED） | `redteam/run.sh:66` | redteam,白名單 |
-| 40 | P2 | 沙盒帶入執行產物（_heartbeat.json / candidates）會讓上次結果被誤認成這次結果，導致攻擊 009 假 SEALED | `redteam/run.sh` | redteam,false-green |
-| 41 | P2 | sweep 對 shell 變數展開瞎：把 $REPO/install.sh、$HERE/generalize.py 當字面路徑報死引用，且 .jsonl 被截成 .json；今天新增 tests/ cron/ 後假陽性從 30 增至 59 | `bin/dbp` | sweep,假陽性 |
+| 1 | P2 | 測試：dbp 首次啟用 | `—` | meta |
+| 2 | P2 | 路線B：非 git 目錄測試 | `—` | meta |
+| 3 | P2 | topology 標 expect: fail 但 probe 實測是綠的 — 手標的過期標記 | `topology.yaml` | doc-lie,stale-marker |
+| 4 | P2 | probe 註解抄 chatflow 的 bootstrap 冷卻常數，抄的值大 15 倍且怪錯變數（真凶是 TTL 快取非 MIN_GAP） | `scripts/probe.py:355` | doc-lie,copied-constant |
+| 5 | P2 | pre-commit 是懸空 symlink，git hook run 回 cannot find a hook 且 exit 0 靜默放行 — 看起來有閘實際沒有 | `.git/hooks/pre-commit` | gate,silent-failure,git |
+| 6 | P2 | topology 的 at 指向 ~/Developer/agent-sandbox，該目錄不存在（本尊在 ~/agent-sandbox） | `topology.yaml:76` | doc-lie,path |
+| 7 | P2 | topology 稱 path-DENY 紅線在 agentOS 定義 — 反了，實際在 neuralis 自己的 laap/safety_gate.py:165 | `topology.yaml` | doc-lie,ownership |
+| 8 | P2 | causal 稱 agentOS 是 38 工具 registry，agentos.json 實際 tools10/routes30/bridge7/pipeline6，湊不出 38 | `brain/causal.yaml:34` | doc-lie,unverifiable-number |
+| 9 | P2 | at 欄寫縮寫路徑 ~/Library/... — 人看得懂但機器驗不了，不可驗證的宣稱等於沒宣稱 | `topology.yaml:25` | doc-lie,path,abbreviation |
+| 10 | P2 | ~/Desktop/agent-sandbox 是 6/28 舊 checkout 且有未提交改動，AI 讀錯那份會拿到過期情報 | `/Users/ryan/Desktop/agent-sandbox` | stale-checkout,duplicate |
+| 11 | P2 | 宣稱驗過就推 commit，但驗法是跑 probe，而 probe 只驗 edges 對稱差集、node 欄位一字不看 — 同角度驗等於沒驗 | `scripts/probe.py` | iron-law-2,self,verification |
+| 12 | P2 | lint 的 truth dict 存錯層（v[0] 是 tuple 不是值），TypeError: unsupported format string passed to tuple | `brain/lint.py` | self,python |
+| 13 | P2 | lint 檢查 E 範疇錯：要求 CI 也要有本機 pre-commit，但 core.hooksPath 是本機 config 不進版控 | `brain/lint.py` | self,ci,category-error |
+| 14 | P2 | 編輯 topology 時未加引號的 yaml 純量裡出現 'at: '，被當成 mapping key，整份解析失敗 | `topology.yaml:48` | self,yaml,quoting |
+| 15 | P2 | 獨立驗證腳本自己錯了：~ 在雙引號裡不展開，4 個真實存在的路徑被誤報成開不起來 | `—` | self,shell,quoting,verifier-bug |
+| 16 | P2 | lint 檢查 F 第一版用『長得像不像路徑』猜，把 6 個正確的 repo 相對路徑與含空格 macOS 路徑判成描述 — 兩條路互相打臉才抓到 | `brain/lint.py` | self,iron-law-2,false-positive |
+| 17 | P2 | 看到檢查器報錯而檔案實際存在，第一反應是『我的檢查器假陽性』— 差點丟掉真陽性。真相是第三種：路徑含縮寫無法驗證 | `—` | self,iron-law-2,misdiagnosis |
+| 18 | P2 | 此環境 rg 被 shim 成 grep，--include / -g 都不支援，會噴 usage 而非搜尋結果 | `—` | env-trap,tooling |
+| 19 | P2 | 全域 skill 裡寫死 lint 的檢查代號（D/F）— 檢查編號今天就從 5 道變 7 道，代號是最會漂的東西 | `/Users/ryan/.claude/skills/debugpedia/SKILL.md` | iron-law-1,copied-reference,self |
+| 20 | P2 | [fix of 19fa37b] 改成不寫檢查代號，只指向 brain/lint.py 檔頭；代號會漂，寫死就是抄本 | `—` | fix |
+| 21 | P2 | 留言板貼文用 ## 標題開頭，但 Aris 用 \n(?=\[\d{4}-\d{2}-\d{2}) 切塊，必須 [YYYY-MM-DD 開頭 — 貼了等於沒貼，且只吃前 180 字 | `laap/chatflow.py:236` | self,format-mismatch,invisible-write |
+| 22 | P2 | skill 由 debugpedia 更名為 coding-yinyang-eye，先前 dbp 紀錄裡指向舊路徑的 where 欄已失效 | `/Users/ryan/.claude/skills/coding-yinyang-eye` | rename,stale-reference |
+| 23 | P2 | LAAP API 回傳的 usage.total_tokens 寫死 0（chatflow.py:420 與 :824），Scream 用它算 context %，所以永遠停在 0% 不跳動 | `laap/chatflow.py:420` | bug,token-accounting,hardcoded-zero |
+| 24 | P2 | gbrain/now 停在 07-24：宣稱 main=622f258（實際 f01f3d3）、pytest 188（實際 266）— 腦庫現況頁腐朽三天 | `gbrain/now` | doc-lie,stale-state |
+| 25 | P2 | config.toml 有 32 處 cline 殘留（providers.cline + 8 個 cline/* model 定義），訂閱已要退掉 | `/Users/ryan/.scream-code/config.toml` | dead-config,cleanup |
+| 26 | P2 | Scream 0.10.0 無原生自訂斜線指令：plugin manifest 把 commands 列在 UNSUPPORTED_RUNTIME_FIELDS，指令是 bundle 內寫死清單。這是 /aris-mode 只能 monkey-patch 的原因 | `/opt/homebrew/lib/node_modules/scream-code/dist/app-Bda9iKUb.mjs` | scream,no-extension-point,architecture |
+| 27 | P2 | 兩個 skills 目錄易混：Scream 實際讀 ~/.agents/skills（101 個），~/.scream-code/skills 只有 8 個 | `—` | scream,ambiguous-path |
+| 28 | P2 | 改了 chatflow.py 的 usage 但活 API 仍回 total_tokens=0 — 服務跑舊碼未重啟。改檔 != 生效 | `laap/chatflow.py` | iron-law-2,not-deployed |
+| 29 | P2 | settings.json 的 hook 設定在 session 啟動時載入，對話中途新增的 hook 不會生效，無法當場驗證接線 | `/Users/ryan/.claude/settings.json` | hook,claude-code,not-live-until-restart |
+| 30 | P2 | sweep 的 PATHISH 正則太鬆，把 try/except、Python/Rust、application/json、github.com/... 全判成路徑 — 812 條裡九成五是假陽性。今天第二次犯『用形狀猜路徑』 | `/Users/ryan/.local/bin/dbp` | self,false-positive,regex,repeat-offense |
+| 31 | P2 | sweep 的死 commit 檢查分不出『宣稱它是真的』與『引用它當反面教材』— 8 處全是後者，差點產出假恐怖故事。抓鬼工具會生誇大的鬼 | `/Users/ryan/.local/bin/dbp` | self,false-positive,overclaim |
+| 32 | P2 | [fix of 19fa38] 推翻：hook 當場就生效了。編輯 CLAUDE.md 時 dbp-risk-gate 確實跳出前科警告。稍早探針沒觸發另有原因，不是 settings.json 不重載 | `—` | fix |
+| 33 | P2 | 我宣稱『settings.json 中途改不生效』是錯的 — 同 session 內 PreToolUse hook 實測有觸發。從單一失敗案例推論出通則 | `—` | self,overgeneralize,iron-law-2 |
+| 34 | P2 | wc 多檔輸出被 shim 成 Σ 摘要，害我誤判 _runs.jsonl 不存在、差點宣稱 PostToolUse 沒觸發 | `—` | env-trap,tooling,overclaim |
+| 35 | P2 | unverified() 對『驗過了』和『沒有編輯紀錄』都回空集合，兩者語意混同 — 測試因此把未知印成通過 | `/Users/ryan/Developer/LB-oculus/bin/dbp` | self,semantics,false-negative |
+| 36 | P2 | dbp 存相對 where 但 shell cwd 常被重設成別的 repo，紀錄事後解不到路徑 — 應存絕對路徑或 repo 相對 | `/Users/ryan/Developer/LB-oculus/bin/dbp` | self,path,record-rot |
+| 37 | P2 | 我把兩筆真陽性判成『我腳本的假陽性』— 法二換條路才糾正。憑直覺否定檢查結果又一次 | `—` | self,iron-law-2,misdiagnosis |
 
-## 未收尾 30 條（鐵律三 B 類）
+## 未收尾 18 條（鐵律三 B 類）
 
 | # | 優先 | 要做什麼 | 位置 | 被什麼擋住 |
 |---|---|---|---|---|
-| 1 | P0 | P0-0 install.sh 綠勾改由實際執行定義（link 後跑一次 --help） | `install.sh` | 等 Ryan 批准修正規劃案 001 |
-| 2 | P0 | P0 三個檔 shebang 改 /usr/bin/env python3 | `bin/dbp,hooks/` | 等批准 |
-| 3 | P0 | P0 寫第一個 smoke test（17 條裡 11 條可被 30 行測試抓到） | `tests/` | 等批准 |
-| 4 | P0 | P0-1 _all() 排除 _ 開頭的 ledger 檔 | `bin/dbp:69` | 等批准 |
-| 5 | P0 | P0-3 fix 指標改掃 [fix of 前綴，或改 fix() 寫 fixes 欄位 | `bin/dbp:523` | 等批准 |
-| 6 | P0 | 新洞A 記帳移到 exists(DBP) 檢查之前，消除兩本帳共同失效點 | `hooks/dbp-risk-gate:41` | 等批准 |
-| 7 | P0 | P0-2 gate 擴及 Bash 改檔（heredoc/sed -i/tee/重導向） | `hooks/dbp-risk-gate:26` | 設計未定：如何從 cmd 字串可靠萃取被改檔案 |
-| 8 | P0 | 結構 兩本帳從未被拿來對過 —— 實作對帳動作，或改用 git log + CI exit code | `.` | 設計未定：需先決定用 daemon / 另一台機器 / CI |
-| 9 | P0 | 結構 README 表格 _edits/_runs 的『✅真獨立』降級為 ⚠️（在做到之前先降級宣稱） | `README.md:189` | 等批准 |
-| 10 | P1 | P1-6 _runs.jsonl 落盤前遮罩機密（在 ledger 搬家之前做） | `hooks/dbp-autocapture:94` | 等批准 |
-| 11 | P1 | 新洞E risk() len(stem)>3 改 >=3 或加詞界比對 | `bin/dbp:272` | 等批准 |
-| 12 | P1 | 新洞B README matcher 補 MultiEdit（或改為單一來源推導） | `README.md:83` | 等批准 |
-| 13 | P1 | P1-4 unverified() 接上 main() 或刪除 + 移除三處 pre-commit 幻影宣稱 | `bin/dbp:223` | 等批准 |
-| 14 | P1 | 帳本 append-only 強制 + 篡改可觀測（chattr +a / hash chain / fsync） | `~/.debugpedia/` | 設計未定 |
-| 15 | P1 | P1-5b hook heartbeat：stats 開頭印 hook 上次寫入時間（注意不可與被監測物共用 shebang 失效點） | `bin/dbp:334` | 等批准 |
-| 16 | P1 | D main() 未知子指令改報錯而非記成 bug | `bin/dbp:573` | 等批准 |
-| 17 | P2 | 新洞C CODE_EXT 把 jsonl 移到 json 之前 | `bin/dbp:370` | 等批准 |
-| 18 | P2 | P2-b SWEEP_EXT 改為也掃無副檔名的可執行檔（讓 sweep 看見自己） | `bin/dbp:361` | 等批准 |
-| 19 | P2 | P2-a README 四條/三條 統一 | `README.md:173` | 等批准 |
-| 20 | P2 | P2-c done() 驗證 id 存在 | `bin/dbp:134` | 等批准 |
-| 21 | P2 | redteam 只在 Linux/Python3.13 驗過，macOS 未驗 —— 那正是 shebang 洞的所在平台 | `—` | 沒有 macOS 環境 |
-| 22 | P2 | redteam 沙盒是 cp -R 複本，不驗 symlink 安裝的真實行為（001 用假 HOME 近似） | `—` | 設計未定 |
-| 23 | P2 | runner 沒有 canary 監視「漏跑攻擊」—— 跑了 8 支只回報 5 支目前偵測不到 | `—` | 設計未定 |
-| 24 | P2 | redteam 未接進 install.sh 驗收段與 CI，目前要手動跑 | `—` | 等批准 |
-| 25 | P2 | 心跳會腐朽：A14 只驗誠實不驗新鮮，cron 停三個月後 _heartbeat.json 仍靜靜宣稱成功 | `tests/smoke.sh` | 需要決定新鮮度門檻（幾天算過期） |
-| 26 | P2 | plan/002 預期 bug #2 未驗證：crontab 環境的 PATH 問題尚未有機會發作，第一階段刻意不裝排程 | `cron/README.md` | 等使用者真的排進 crontab |
-| 27 | P2 | 候選品質沒有回饋迴路：不知道哪些候選後來真的變成攻擊，所以不知道 cron 這層有沒有用 | `cron/candidates` | 需先累積兩週以上候選 |
-| 28 | P2 | smoke test 只在 Linux 驗過（plan/001 預期 bug #3 自評高風險，成因與 shebang 洞相同） | `tests/smoke.sh` | 沒有 macOS 環境 |
-| 29 | P2 | 10 條已知紅（A03-A12）尚未修；plan/001 刻意只做可見化不做修復 | `tests/smoke.sh` | 等 plan/003 逐項處置，每項需先有測試護著 |
-| 30 | P2 | sweep 假陽性隨 repo 成長而增加，遲早沒人看 sweep 的輸出（屠龍者變惡龍） | `bin/dbp` | 需先決定變數展開的處理策略 |
+| 1 | P2 | Scream 的 AGENTS.md 還沒寫進三鐵律（Aris 端已進 gbrain 本體論） | `/Users/ryan/.scream-code/AGENTS.md` | 沒擋住，就是還沒做 |
+| 2 | P2 | gbrain/now 停在 07-24，main hash 與 pytest 數都過期 | `gbrain/now` | 沒擋住，就是還沒做 |
+| 3 | P2 | config.toml 32 處 cline 殘留待清 | `/Users/ryan/.scream-code/config.toml` | 等 Ryan 點頭（活的執行設定） |
+| 4 | P2 | chatflow.py 的 token % 已修但服務未重啟，11546 仍跑舊碼 | `laap/chatflow.py` | 等 Ryan 決定誰重啟 |
+| 5 | P2 | coding陰陽眼 註冊成 Scream 斜線指令 — 無原生機制，需選 skill 或 bundle patch | `—` | 等 Ryan 選路線 |
+| 6 | P2 | dbp converge：關掉幾類 vs 新開幾類，唯一能判斷整套有沒有用的指標 | `—` | 沒擋住，就是還沒做 |
+| 7 | P2 | sweep 死引用 227 條 / 抑制 176 條，假陽性率仍高，需再收斂 | `/Users/ryan/.local/bin/dbp` | 沒擋住，就是還沒做 |
+| 8 | P2 | ~/Desktop/agent-sandbox 是 6/28 舊 checkout 且有未提交改動，該清掉 | `—` | 沒擋住，就是還沒做 |
+| 9 | P2 | relay_remembers_turn 真紅：aris-relay.py:124 不回放歷史 + chatflow.py:50 只取最後一則 | `—` | 要先決定對話連續性歸哪層管 |
+| 10 | P2 | 兩個 hook（dbp-autocapture 自動記錄、dbp-risk-gate 動手前示警）接線未驗 — settings.json 中途不生效 | `—` | 下個 session 開場：改一個有前科的檔看有沒有跳警告；跑一個會失敗的指令看有沒有自動記錄 |
+| 11 | P2 | 鐵律二機械化只完成一半：_edits/_runs log 已在寫，但 unverified() 要分清 verified/unknown，且還沒接進 pre-commit | `/Users/ryan/Developer/LB-oculus/bin/dbp` | 沒擋住，就是還沒做 |
+| 12 | P2 | 法二紅隊八條作弊法，現只蓋 2 條：驗證需碰到該檔/驗證器指紋/逐檔配對/偵測收窄參數(-k)/豁免diff警示/最後編輯後必驗 | `/Users/ryan/Developer/LB-oculus/bin/dbp` | 沒擋住，就是還沒做 |
+| 13 | P2 | 法三補強：超齡未收尾自動升級成 bug、where 欄必填、失敗數 vs 紀錄數對帳 | `—` | 沒擋住，就是還沒做 |
+| 14 | P2 | 法零指標：豁免規則成長 vs dbp fix 成長，比值上升=在調鬆閘門而非修對問題 | `—` | 沒擋住，就是還沒做 |
+| 15 | P2 | dbp audit：四本帳交叉對帳。優先做①法二→法一覆蓋缺口 ②法三→法二漏驗 ④法零鬆動，因基準帳本(_edits/_runs/git)不是我能改的 | `—` | 沒擋住，就是還沒做 |
+| 16 | P2 | dbp rules 升級成候選閘產生器：到閾值直接吐閘骨架，人只審核（離 AGI 最近也最遠的一格） | `—` | 沒擋住，就是還沒做 |
+| 17 | P2 | Scream 驗 Aris 的成長路徑與錯誤 — Ryan 早先想做、agentOS 有元件負責、當時沒成功。這是真正獨立的第二本帳 | `—` | 要先查 agentOS 哪個元件負責 |
+| 18 | P2 | dbp converge：關掉幾類 vs 新開幾類，唯一能判斷整套有沒有用的指標 | `—` | 沒擋住，就是還沒做 |
 
 ## 法則候選 · 出現 ≥2 次的類別
 
 > 單筆是事件，重複才是法則。≥2 次 = 該從結構上關掉整類。
 
-- **self-violation** ×15
-- **redteam** ×9
-- **false-green** ×7
-- **my-own-bug** ×6
-- **sweep** ×5
-- **cron** ×3
-- **metrics** ×2
-- **phantom-claim** ×2
-- **double-entry** ×2
-- **self-blind** ×2
-- **false-positive** ×2
-- **cli** ×2
-- **hang** ×2
-- **plan** ×2
+- **self** ×15
+- **doc-lie** ×7
+- **iron-law-2** ×6
+- **path** ×3
+- **false-positive** ×3
+- **meta** ×2
+- **quoting** ×2
+- **misdiagnosis** ×2
+- **env-trap** ×2
+- **tooling** ×2
+- **fix** ×2
+- **scream** ×2
+- **overclaim** ×2
 
-## 自我違反 15 / 41 條
+## 自我違反 15 / 37 條
 
 這個 repo 違反自己寫下的鐵律的次數。**這個數字是本專案最重要的指標。**
 它下降代表工事在收斂；它上升代表在寫更多宣稱而不是更多證據。

@@ -16,7 +16,6 @@
   · 沒前科就完全安靜。每次都講話的東西會被當成雜訊忽略。
 """
 
-import hashlib
 import json
 import os
 import subprocess
@@ -42,40 +41,16 @@ def main():
     if not path or not os.path.exists(DBP):
         return 0
 
-    # 記下這次編輯 —— 鐵律二機械化的原料。
-    # 「產出者不得自驗」以前只是句口號：沒有任何東西能證明改完之後
-    # 真的跑過什麼。2026-07-27 就是這樣把 topology.yaml 的 yaml 語法改壞
-    # 然後直接往下走的。有了這份 log，pre-commit 就能問：
-    # 「這個檔改完之後，有沒有任何指令實際碰過它？」
+    # 記下這次編輯 —— 統一經由 dbp chain_append，不得自算 prev。
+    # 鐵律一：同一份算式只應存在一個地方。
     try:
         d = os.path.expanduser(os.environ.get("DEBUGPEDIA_DIR", "~/.debugpedia"))
         os.makedirs(d, exist_ok=True)
         ap = os.path.abspath(path)
         rec = {"ts": time.time(), "path": ap, "tool": tool}
-        try:
-            st = os.stat(ap)
-            rec["mtime"] = round(st.st_mtime, 3)
-        except Exception:
-            pass
-        try:
-            with open(ap, "rb") as fh:
-                rec["sha"] = hashlib.sha256(fh.read()).hexdigest()[:12]
-        except Exception:
-            pass
-        # 雜湊鏈：讀前一筆 sha256
-        try:
-            lp = os.path.join(d, "ledger/_edits.jsonl")
-            if os.path.exists(lp) and os.path.getsize(lp) > 0:
-                with open(lp, "rb") as fh:
-                    lines = fh.read().splitlines()
-                if lines:
-                    rec["prev"] = hashlib.sha256(lines[-1]).hexdigest()
-        except Exception:
-            pass
-        if "prev" not in rec:
-            rec["prev"] = "genesis"
-        with open(os.path.join(d, "ledger/_edits.jsonl"), "a", encoding="utf-8") as f:
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        subprocess.run([DBP, "_chain-append", "edits"],
+                       input=json.dumps(rec, ensure_ascii=False),
+                       capture_output=True, timeout=5)
     except Exception:
         pass
 

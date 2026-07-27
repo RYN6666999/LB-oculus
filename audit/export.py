@@ -85,7 +85,7 @@ def main():
         for k, v in sorted(hot.items(), key=lambda x: -x[1]):
             L.append(f"- **{k}** ×{v}")
 
-    sv = sum(1 for r in errs if "self-violation" in (r.get("tags") or ""))
+    sv = sum(1 for r in errs if "self-violation" in (r.get("tags") or "") or "self" in (r.get("tags") or "").split(","))
     L.append(f"\n## 自我違反 {sv} / {len(errs)} 條\n")
     L.append("這個 repo 違反自己寫下的鐵律的次數。**這個數字是本專案最重要的指標。**")
     L.append("它下降代表工事在收斂；它上升代表在寫更多宣稱而不是更多證據。\n")

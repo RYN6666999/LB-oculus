@@ -54,8 +54,50 @@ mkdir -p "$(dirname "$ANCHORS")"
 # 如果沒有檔頭就補
 [ -f "$ANCHORS" ] || printf '%s\n' "# 錨點紀錄" "" "> 自動產生，不要手改。cron/anchor.sh 每天 append。" "" > "$ANCHORS"
 
-# append 兩行（edits + runs）
-printf '%s\n' "$ANCHOR_OUT" >> "$ANCHORS"
+# ── 去重：比對只取 <類型> <hash> <筆數>，時間戳不參與 ──────────────
+# 從 ANCHOR_OUT 提取各類型的最後一筆 key
+new_edits_key=""; new_runs_key=""
+while IFS= read -r line; do
+  case "$line" in
+    edits*) new_edits_key=$(echo "$line" | awk '{print $1, $2, $3}') ;;
+    runs*)  new_runs_key=$(echo "$line" | awk '{print $1, $2, $3}') ;;
+  esac
+done <<ANCHOR_DATA
+$ANCHOR_OUT
+ANCHOR_DATA
+
+# 從現有 ANCHORS.md 取各類型的最後 key
+last_edits_key=$(grep '^edits ' "$ANCHORS" 2>/dev/null | tail -1 | awk '{print $1, $2, $3}')
+last_runs_key=$(grep '^runs ' "$ANCHORS" 2>/dev/null | tail -1 | awk '{print $1, $2, $3}')
+
+# 決定哪些行需要追加（只追加真正有變動的）
+APPEND_LINES=""
+changed=false
+while IFS= read -r line; do
+  case "$line" in
+    edits*)
+      key=$(echo "$line" | awk '{print $1, $2, $3}')
+      if [ "$key" != "$last_edits_key" ]; then
+        APPEND_LINES="${APPEND_LINES}${line}\n"; changed=true
+      fi ;;
+    runs*)
+      key=$(echo "$line" | awk '{print $1, $2, $3}')
+      if [ "$key" != "$last_runs_key" ]; then
+        APPEND_LINES="${APPEND_LINES}${line}\n"; changed=true
+      fi ;;
+  esac
+done <<ANCHOR_DATA
+$ANCHOR_OUT
+ANCHOR_DATA
+
+if ! $changed; then
+  beat ok "無變動（錨點 hash 與筆數與上次一致）"
+  printf 'anchor: ✓ 無變動，跳過\n'
+  exit 0
+fi
+
+# append 有變動的行
+printf '%b' "$APPEND_LINES" >> "$ANCHORS"
 
 # ── commit & push ────────────────────────────────────────────────────
 cd "$REPO_ROOT" || die "無法 cd 到 repo root: $REPO_ROOT"

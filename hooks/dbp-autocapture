@@ -20,7 +20,6 @@
   · 只記真失敗，不記噪音。
 """
 
-import hashlib
 import json
 import os
 import re
@@ -84,9 +83,8 @@ def main():
 
     cmd = str(cmd).strip()
 
-    # 記下每一條跑過的指令（成功失敗都記）—— 鐵律二機械化的另一半原料。
-    # 配合 _edits.jsonl，pre-commit 才答得出「這個檔改完後有沒有被實際執行過」。
-    # 沒有這份 log，「換一條路驗」永遠只能是口號。
+    # 記下每一條跑過的指令（成功失敗都記）—— 統一經由 dbp chain_append。
+    # 鐵律一：同一份算式只應存在一個地方。
     if cmd:
         try:
             d = os.path.expanduser(os.environ.get("DEBUGPEDIA_DIR", "~/.debugpedia"))
@@ -94,19 +92,9 @@ def main():
             rec = {"ts": __import__("time").time(),
                    "cmd": cmd[:500], "code": code,
                    "cwd": data.get("cwd") or ""}
-            lp = os.path.join(d, "ledger/_runs.jsonl")
-            try:
-                if os.path.exists(lp) and os.path.getsize(lp) > 0:
-                    with open(lp, "rb") as fh:
-                        rlines = fh.read().splitlines()
-                    if rlines:
-                        rec["prev"] = hashlib.sha256(rlines[-1]).hexdigest()
-            except Exception:
-                pass
-            if "prev" not in rec:
-                rec["prev"] = "genesis"
-            with open(lp, "a", encoding="utf-8") as f:
-                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            subprocess.run([str(DBP), "_chain-append", "runs"],
+                           input=json.dumps(rec, ensure_ascii=False),
+                           capture_output=True, timeout=5)
         except Exception:
             pass
 

@@ -45,6 +45,18 @@ DIR = Path(os.environ.get("DEBUGPEDIA_DIR", Path.home() / ".debugpedia"))
 WHO = ("ai", "human", "machine")
 
 
+def _last_line(path):
+    """回傳 path 的最後一行字串，檔案不存在或空回 None。"""
+    try:
+        txt = Path(path).read_text(encoding="utf-8", errors="replace").strip()
+        if not txt:
+            return None
+        lines = [l.strip() for l in txt.splitlines() if l.strip()]
+        return lines[-1] if lines else None
+    except (FileNotFoundError, OSError):
+        return None
+
+
 def _week_file(when=None):
     d = when or datetime.now(timezone.utc)
     y, w, _ = d.isocalendar()
@@ -534,17 +546,55 @@ def fix(rid, text):
 
 
 def _chain_prev(path):
-    """回傳 path 最後一筆的 sha256（hex），空檔回 "genesis"。"""
-    try:
-        txt = Path(path).read_text(encoding="utf-8", errors="replace").strip()
-        if not txt:
-            return "genesis"
-        last = txt.splitlines()[-1].strip()
-        if not last:
-            return "genesis"
-        return hashlib.sha256(last.encode("utf-8")).hexdigest()
-    except (FileNotFoundError, OSError):
+    """回傳 path 最後一筆的 sha256（hex），空檔回 "genesis"。
+    
+    如果最後一筆是接地前資料（無 prev 欄位），也回 "genesis"，
+    讓新鏈從此地開始。舊資料不參與鏈但也不被刪除。
+    """
+    last = _last_line(path)
+    if last is None:
         return "genesis"
+    # 檢查最後一筆是否有 prev 欄位：沒有 → 接地前資料，新鏈從 genesis 開始
+    try:
+        rec = json.loads(last)
+        if not rec.get("prev"):
+            return "genesis"
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return hashlib.sha256(last.encode("utf-8")).hexdigest()
+
+
+def chain_append(data, ledger_name):
+    """統一的鏈附加入口：計算 prev → 加入 data → append。
+    
+    四函式之一（與 _chain_prev、_read_chain、verify_chain 同級）。
+    兩支 hook（risk-gate、autocapture）與 shell 指令帳都經此寫入。
+    
+    ledger_name='edits' → _edits.jsonl, 'runs' → _runs.jsonl。
+    若 data 含 'path'（現存檔案），自動補 mtime 與 sha256。
+    """
+    ledger_file = _ledger_file(ledger_name)
+    data["prev"] = _chain_prev(str(ledger_file))
+    ap = data.get("path", "")
+    if ap and os.path.isfile(ap):
+        try:
+            st = os.stat(ap)
+            data.setdefault("mtime", round(st.st_mtime, 3))
+        except Exception:
+            pass
+        try:
+            with open(ap, "rb") as fh:
+                data.setdefault("sha", hashlib.sha256(fh.read()).hexdigest()[:12])
+        except Exception:
+            pass
+    try:
+        ledger_file.parent.mkdir(parents=True, exist_ok=True)
+        with ledger_file.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(data, ensure_ascii=False) + "\n")
+        return True
+    except Exception as e:
+        print(f"chain_append: 寫入失敗（已忽略）: {e}", file=sys.stderr)
+        return False
 
 
 def _read_chain(path):
@@ -742,6 +792,17 @@ def main(argv):
             print("用法: dbp _chain-prev <ledger/檔名>", file=sys.stderr)
             return 2
         return print(_chain_prev(str(DIR / argv[1]))) or 0
+    if cmd == "_chain-append":
+        if len(argv) < 2 or argv[1] not in ("edits", "runs"):
+            print("用法: dbp _chain-append <edits|runs>", file=sys.stderr)
+            return 2
+        try:
+            raw = sys.stdin.read()
+            data = json.loads(raw) if raw.strip() else {}
+        except json.JSONDecodeError:
+            print("_chain-append: stdin 須為 JSON", file=sys.stderr)
+            return 2
+        return 0 if chain_append(data, argv[1]) else 1
     if cmd == "anchor":
         has_all = "--all" in argv
         return anchor(human="--human" in argv or "-H" in argv,

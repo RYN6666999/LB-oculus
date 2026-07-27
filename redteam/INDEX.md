@@ -2,12 +2,12 @@
 
 **自動產生 —— 不要手改。** 來源是 `attacks/*.sh` 的檔頭宣告。
 
-> 產生於 2026-07-27T16:04:58+00:00
+> 產生於 2026-07-27T16:22:05+00:00
 > 重建：`python3 redteam/index.py` · 檢查過期：`python3 redteam/index.py --check`
 
 ---
 
-共 **13** 支 · 預期 BREACH（洞還在）**9** 支 · 監視 harness 自己的 canary **2** 支
+共 **14** 支 · 預期 BREACH（洞還在）**9** 支 · 監視 harness 自己的 canary **2** 支
 
 > BREACH 是綠色的。洞還在 = 符合預期。洞消失才要停下來查。
 
@@ -19,7 +19,7 @@
 |---|---|
 | **EXPECT** | `SEALED` |
 | **標的** | `install.sh:16（已於 plan/001 處置）` |
-| **相關文件** | `audit/2026-07-27-verification.md` · `audit/LEDGER-SNAPSHOT.md` · `plan/001-restore-executability.md` · `plan/002-llm-generalizer-cron.md` · `plan/README.md` |
+| **相關文件** | `audit/2026-07-27-verification.md` · `plan/001-restore-executability.md` · `plan/002-llm-generalizer-cron.md` · `plan/README.md` |
 
 **宣稱**：install.sh 曾用 test -e 定義成功，所以 shebang 壞掉時照樣印 ✓ 並 exit 0
 
@@ -35,7 +35,7 @@
 |---|---|
 | **EXPECT** | `BREACH` |
 | **標的** | `~/.debugpedia/*.jsonl（append-only 只是口頭約定）` |
-| **相關文件** | `audit/2026-07-27-verification.md` · `audit/LEDGER-SNAPSHOT.md` · `plan/001-restore-executability.md` |
+| **相關文件** | `audit/2026-07-27-verification.md` · `audit/LEDGER-SNAPSHOT.md` · `plan/001-restore-executability.md` · `plan/balance-log.md` |
 
 **宣稱**：任何人可以直接改寫 ledger，dbp 事後完全看不出來
 
@@ -51,7 +51,7 @@
 |---|---|
 | **EXPECT** | `BREACH` |
 | **標的** | `bin/dbp:202 VERIFY_CMD` |
-| **相關文件** | `audit/2026-07-27-verification.md` · `audit/LEDGER-SNAPSHOT.md` |
+| **相關文件** | `audit/2026-07-27-verification.md` |
 
 **宣稱**：鐵律二的機械化靠字串比對，跑一條「空殼的」pytest 也算驗過
 
@@ -67,7 +67,7 @@
 |---|---|
 | **EXPECT** | `BREACH` |
 | **標的** | `hooks/dbp-risk-gate:41-42` |
-| **相關文件** | `audit/2026-07-27-verification.md` · `audit/LEDGER-SNAPSHOT.md` · `plan/001-restore-executability.md` |
+| **相關文件** | `audit/2026-07-27-verification.md` · `audit/LEDGER-SNAPSHOT.md` · `plan/001-restore-executability.md` · `plan/balance-log.md` |
 
 **宣稱**：ledger 寫入被擋在 os.path.exists(DBP) 之後，dbp 不在時 gate 靜默放行且不留痕
 
@@ -99,7 +99,7 @@
 |---|---|
 | **EXPECT** | `BREACH` |
 | **標的** | `bin/dbp:361 SWEEP_EXT` |
-| **相關文件** | `audit/2026-07-27-verification.md` · `audit/LEDGER-SNAPSHOT.md` |
+| **相關文件** | `audit/2026-07-27-verification.md` |
 
 **宣稱**：sweep 只看白名單副檔名，看不見「無副檔名的可執行檔」—— 包含它自己
 
@@ -115,7 +115,7 @@
 |---|---|
 | **EXPECT** | `BREACH` |
 | **標的** | `bin/dbp:69 _all() glob("*.jsonl") → bin/dbp:183 ls()` |
-| **相關文件** | `audit/2026-07-27-verification.md` · `audit/LEDGER-SNAPSHOT.md` · `plan/001-restore-executability.md` |
+| **相關文件** | `audit/2026-07-27-verification.md` · `plan/001-restore-executability.md` |
 
 **宣稱**：_all() 把 harness 帳本（_edits/_runs）也當成 bug 紀錄讀進來，
 
@@ -147,7 +147,7 @@
 |---|---|
 | **EXPECT** | `SEALED` |
 | **標的** | `cron/generalize.sh · cron/generalize.py（案 002 第一階段）` |
-| **相關文件** | `audit/ANCHORS.md` · `audit/LEDGER-SNAPSHOT.md` · `plan/002-llm-generalizer-cron.md` · `plan/README.md` |
+| **相關文件** | `audit/ANCHORS.md` · `plan/002-llm-generalizer-cron.md` · `plan/README.md` · `plan/balance-log.md` |
 
 **宣稱**：接外部 LLM 的排程最可能的失效不是「歸納得不好」，是「失敗了但沒人知道」
 
@@ -163,7 +163,7 @@
 |---|---|
 | **EXPECT** | `BREACH` |
 | **標的** | `~/.debugpedia/ledger/（目錄層 — 002 只驗了檔案層）` |
-| **相關文件** | `audit/2026-07-27-verification.md` · `audit/LEDGER-SNAPSHOT.md` · `plan/001-restore-executability.md` · `plan/002-llm-generalizer-cron.md` · `plan/README.md` |
+| **相關文件** | `audit/2026-07-27-verification.md` · `audit/LEDGER-SNAPSHOT.md` · `plan/001-restore-executability.md` · `plan/002-llm-generalizer-cron.md` · `plan/README.md` · `plan/balance-log.md` · `plan/scream-onboarding.md` |
 
 **宣稱**：sappnd 鎖檔案不夠：mv ledger /tmp/ 再建空目錄，整本帳無聲消失
 
@@ -179,13 +179,29 @@
 |---|---|
 | **EXPECT** | `BREACH` |
 | **標的** | `~/.debugpedia/ledger/_edits.jsonl（截尾）` |
-| **相關文件** | `audit/2026-07-27-verification.md` · `audit/LEDGER-SNAPSHOT.md` · `plan/001-restore-executability.md` · `plan/002-llm-generalizer-cron.md` · `plan/README.md` |
+| **相關文件** | `audit/2026-07-27-verification.md` · `audit/LEDGER-SNAPSHOT.md` · `plan/001-restore-executability.md` · `plan/002-llm-generalizer-cron.md` · `plan/README.md` · `plan/balance-log.md` · `plan/scream-onboarding.md` |
 
 **宣稱**：刪最後 N 行，雜湊鏈前綴自洽，verify-chain --anchor 也通過（舊 hash 在前面仍在鏈上）
 
 **為什麼值得一支攻擊**：想抹掉剛做過的事最省力的手法就是砍尾巴。改中間和換本都擋了，截尾還沒擋。
 
 單獨跑：`./redteam/run.sh 011`
+
+---
+
+## `012-chain-functions-not-drifted.sh`
+
+| | |
+|---|---|
+| **EXPECT** | `BREACH  （正常 = 四函式都在 bin/dbp 裡、hooks 全清掉了）` |
+| **標的** | `hooks/* （統一後 hooks 內不該有獨立的 prev 算式）` |
+| **相關文件** | `⚠️ 無法從標的產生搜尋鍵` |
+
+**宣稱**：四函式（chain_prev/read_chain/verify_chain/chain_append）
+
+**為什麼值得一支攻擊**：同一份 prev 算式寫三遍，改其中一份就漂移。
+
+單獨跑：`./redteam/run.sh 012`
 
 ---
 
