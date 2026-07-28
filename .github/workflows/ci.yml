@@ -2,6 +2,10 @@ name: CI
 on: push
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
     steps:
-      - run: echo "hello"
+      - run: echo "hello ${{ matrix.os }}"
