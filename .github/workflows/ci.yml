@@ -16,19 +16,48 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. 檢查 oculus-rules 裡面的壞帳 (KNOWN_FAIL)
+      # 2. 檢查 oculus-rules 裡面的壞帳數量與是否過期
       - name: Verify Oculus Rules
         run: |
           echo "正在檢查 oculus-rules 規則庫..."
-          
-          # 計算有多少個 KNOWN_FAIL 壞帳
+
+          echo "=== 檢查 1：KNOWN_FAIL 數量上限 ==="
           KNOWN_COUNT=$(grep -rnw 'oculus-rules/' -e 'status: KNOWN_FAIL' 2>/dev/null | wc -l || true)
           echo "目前 KNOWN_FAIL 數量: $KNOWN_COUNT"
-          
+
           # 條款：超過 3 個直接熔斷亮紅燈
           if [ "$KNOWN_COUNT" -gt 3 ]; then
             echo "❌ 錯誤：KNOWN_FAIL 數量超過上限 (最多 3 個，目前 $KNOWN_COUNT 個)！"
             exit 1
           fi
 
-          echo "✅ 規則庫檢查通過！"
+          echo "=== 檢查 2：檢查壞帳是否過期 (7 天 TTL 引爆) ==="
+          TODAY=$(date +%Y-%m-%d)
+          echo "今天日期: $TODAY"
+
+          EXPIRED_FOUND=0
+          
+          # 逐一掃描 oculus-rules 資料夾內的所有 yml 檔案
+          for f in oculus-rules/*.yml oculus-rules/*.yaml; do
+            if [ -f "$f" ]; then
+              # 讀取 expire_date 欄位裡面的日期
+              EXPIRE_DATE=$(grep -E '^expire_date:' "$f" | sed -E 's/expire_date:[[:space:]]*"?([0-9]{4}-[0-9]{2}-[0-9]{2})"?/\1/' | tr -d '\r')
+              
+              if [ -n "$EXPIRE_DATE" ]; then
+                if [[ "$TODAY" > "$EXPIRE_DATE" ]]; then
+                  echo "❌ 致命錯誤：規則檔 $f 已過期 (到期日: $EXPIRE_DATE，今天: $TODAY)！"
+                  EXPIRED_FOUND=1
+                else
+                  echo "ℹ️ 規則檔 $f 尚未過期 (到期日: $EXPIRE_DATE)"
+                fi
+              fi
+            fi
+          done
+
+          # 如果發現有任何一份壞帳已經過期，直接亮紅燈
+          if [ "$EXPIRED_FOUND" -eq 1 ]; then
+            echo "❌ 發現已過期未修復的壞帳，強迫停工修復！"
+            exit 1
+          fi
+
+          echo "✅ 規則庫所有防線檢查通過！"
