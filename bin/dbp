@@ -284,7 +284,7 @@ def risk(target):
     direct, kin = [], []
     for r in rows:
         blob = f"{r.get('where','')} {r.get('what','')} {r.get('tags','')}".lower()
-        if base.lower() in blob or (len(stem) > 3 and stem.lower() in blob):
+        if base.lower() in blob or (len(stem) >= 3 and stem.lower() in blob):
             direct.append(r)
         elif ext and ext in (r.get("tags") or "").lower():
             kin.append(r)
@@ -786,6 +786,29 @@ def verify_chain(anchor_hash=None, which="edits"):
     return 0
 
 
+def prompt(targets):
+    """dbp prompt — 吃檔名吐前科報告。直接呼叫 risk()，只換輸出格式。"""
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    out = []; total = 0; unsolved = 0; missing = False
+    for t in targets:
+        if not os.path.exists(os.path.expanduser(t)):
+            out.append(f"⚠ 找不到 {t}"); missing = True; continue
+        rows = [r for r in _all() if r.get("kind") not in ("open", "done")
+                and (os.path.basename(t).lower() in f"{r.get('where','')} {r.get('what','')} {r.get('tags','')}".lower()
+                     or (len(os.path.splitext(os.path.basename(t))[0]) >= 3
+                         and os.path.splitext(os.path.basename(t))[0].lower() in f"{r.get('where','')} {r.get('what','')} {r.get('tags','')}".lower()))]
+        out.append(f"  {t}   {len(rows)} 筆")
+        for r in rows[:10]:
+            s = "· 未修" if not r.get("fix") else "· 已修"
+            if not r.get("fix"): unsolved += 1
+            out.append(f"    {r['what'][:96]}  {r.get('ts','')[:10]}  {s}")
+        total += len(rows)
+    print(f"=== 前科報告 · dbp prompt · {ts} ===")
+    for l in out: print(l)
+    print(f"=== {total} 筆前科 · 未修 {unsolved} · 已修 {total - unsolved} ===")
+    return 1 if total > 0 or missing else 0
+
+
 def main(argv):
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__)
@@ -872,6 +895,8 @@ def main(argv):
             if a == "--anchor" and i < len(argv) - 1:
                 anchor_hash = argv[i + 1]
         return verify_chain(anchor_hash, which=which)
+    if cmd == "prompt":
+        return prompt(argv[1:]) if len(argv) > 1 else (print("用法: dbp prompt <檔案...>") or 2)
 
     # 預設就是記一筆 —— 最常用的動作不該需要子指令
     what, where, who, tags, ev = [], None, "ai", None, None
