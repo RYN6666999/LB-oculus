@@ -1,0 +1,22 @@
+{
+  "generalizations": [
+    {
+      "structure": "退出碼被 shell 複合指令吞掉",
+      "hypothesis": "任何 `if cmd; then ... fi` 之後才取 $? 的地方，拿到的是 if 本身的 0，而不是 cmd 的真實退出碼。錯誤會被偵測到，但診斷會指向錯的方向。",
+      "how_to_attack": "弄壞被檢查的目標（例如把 shebang 指向不存在的解譯器），斷言錯誤訊息那一行出現的是真實退出碼 127 而不是 0。注意取樣範圍要限定在該行，不能 grep 整份輸出。",
+      "expect": "SEALED",
+      "target": "install.sh:52",
+      "evidence_count": 3,
+      "why_statistics_misses_it": "統計只看得到「shell」這個標籤出現幾次，看不出這幾次共用同一個語法陷阱。"
+    },
+    {
+      "structure": "拿「某字串不存在」當證據，卻沒先證明檢查真的執行到了",
+      "hypothesis": "凡是用 grep -q / grep -c 斷言「輸出不含某模式」的檢查，在輸出為空時都會通過。空的輸出和乾淨的輸出在 grep 眼裡完全一樣。",
+      "how_to_attack": "讓被檢查的產物根本沒有被產生（例如把 payload 改走 argv 而不是 stdin），確認該檢查是否仍然通過。若通過即 BREACH。",
+      "expect": "BREACH",
+      "target": "tests/smoke.sh",
+      "evidence_count": 4,
+      "why_statistics_misses_it": "這四筆分別掛在 install / redteam / smoke / cron 四個不同標籤下，統計上看不出是同一個結構。"
+    }
+  ]
+}

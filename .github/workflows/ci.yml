@@ -1,0 +1,25 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  ci:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 設定 CI 帳本路徑
+        run: echo "DEBUGPEDIA_DIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      - name: install
+        run: bash install.sh
+
+      - name: smoke
+        run: bash tests/smoke.sh
+
+      - name: redteam
+        if: always()
+        run: bash redteam/run.sh

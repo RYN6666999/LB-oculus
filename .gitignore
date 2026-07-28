@@ -2,3 +2,9 @@
 *.jsonl
 __pycache__/
 .DS_Store
+
+# cron 的執行產物：心跳與候選是「這台機器這次跑出來的」，不是原始碼。
+# commit 進去會讓別台機器讀到我的執行結果並以為是自己的 —— 鐵律一禁的事。
+cron/_heartbeat.json
+cron/_lasterr.txt
+cron/candidates/

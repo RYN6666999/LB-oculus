@@ -1,0 +1,39 @@
+#!/bin/sh
+# hooks/pre-commit — git pre-commit hook：事後補登編輯到 ledger/_edits.jsonl。
+#
+# ⚠️ 這是降級方案 ⚠️
+# 真正的編輯帳應該由 agent harness 的 PreToolUse hook 即時記錄。
+# 這支 hook 在 commit 當下才「事後補登」—— 它比 PreToolUse 弱：
+#   · 只有要 commit 的檔案才被記錄（非全部編輯）
+#   · 記錄時間點是 commit 時，不是編輯時
+#   · 沒有 tool name（不知道是 Edit/Write/MultiEdit）
+# 但比零好。且它的優點是不依賴任何特定 agent harness。
+#
+# 使用方式：
+#   ln -sfn ../../hooks/pre-commit .git/hooks/pre-commit
+#   (或 cp hooks/pre-commit .git/hooks/pre-commit)
+# 對 LB-oculus 本身，install.sh 會自動放好。
+#
+# 設計約束：
+#   · exit 0（絕不擋 commit）
+#   · 走 dbp _chain-append edits（prev 由 dbp 統一計算，不在 hook 自理）
+#   · dbp 不存在或壞掉時靜默跳過
+
+DBP="${DBP:-$HOME/.local/bin/dbp}"
+[ -x "$DBP" ] || exit 0
+
+# 取得要 commit 的檔案清單
+files=""
+for f in $(git diff --cached --name-only --diff-filter=ACM 2>/dev/null); do
+  [ -f "$f" ] && files="$files $f"
+done
+
+[ -z "$files" ] && exit 0
+
+# 對每個檔案補登一筆編輯記錄
+ts=$(python3 -c "import time; print(time.time())" 2>/dev/null)
+for f in $files; do
+  ap="$(cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)" && realpath "$f" 2>/dev/null || echo "$f")"
+  printf '{"ts":%s,"path":"%s","tool":"git-pre-commit"}\n' "${ts:-0}" "$ap" 2>/dev/null \
+    | "$DBP" _chain-append edits 2>/dev/null
+done

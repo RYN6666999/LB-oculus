@@ -1,4 +1,4 @@
-#!/opt/homebrew/bin/python3
+#!/usr/bin/env python3
 """dbp-autocapture — PostToolUse hook：指令失敗自動收進 coding 陰陽眼。
 
 為什麼需要這支（根因，有資料）：
@@ -83,18 +83,18 @@ def main():
 
     cmd = str(cmd).strip()
 
-    # 記下每一條跑過的指令（成功失敗都記）—— 鐵律二機械化的另一半原料。
-    # 配合 _edits.jsonl，pre-commit 才答得出「這個檔改完後有沒有被實際執行過」。
-    # 沒有這份 log，「換一條路驗」永遠只能是口號。
+    # 記下每一條跑過的指令（成功失敗都記）—— 統一經由 dbp chain_append。
+    # 鐵律一：同一份算式只應存在一個地方。
     if cmd:
         try:
             d = os.path.expanduser(os.environ.get("DEBUGPEDIA_DIR", "~/.debugpedia"))
             os.makedirs(d, exist_ok=True)
-            with open(os.path.join(d, "_runs.jsonl"), "a", encoding="utf-8") as f:
-                f.write(json.dumps({"ts": __import__("time").time(),
-                                    "cmd": cmd[:500], "code": code,
-                                    "cwd": data.get("cwd") or ""},
-                                   ensure_ascii=False) + "\n")
+            rec = {"ts": __import__("time").time(),
+                   "cmd": cmd[:500], "code": code,
+                   "cwd": data.get("cwd") or ""}
+            subprocess.run([str(DBP), "_chain-append", "runs"],
+                           input=json.dumps(rec, ensure_ascii=False).encode("utf-8"),
+                           capture_output=True, timeout=5)
         except Exception:
             pass
 
