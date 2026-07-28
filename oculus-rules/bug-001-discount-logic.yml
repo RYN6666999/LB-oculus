@@ -1,0 +1,6 @@
+id: bug-001
+description: "AI 將折扣邏輯寫反，導致金額變大"
+target_file: "src/billing.py"
+# 錄入絕對不變量 (Invariant)
+assertion: "calculate_discount(100) < 100" 
+status: ACTIVE
