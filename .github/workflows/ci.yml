@@ -1,35 +1,25 @@
 name: CI
-on: push
+on: [push, pull_request]
 jobs:
   ubuntu:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: echo "DEBUGPEDIA_DIR=$RUNNER_TEMP/ledger" >> "$GITHUB_ENV"
       - name: install
-        run: sh install.sh
-        env:
-          DEBUGPEDIA_DIR: ${{ runner.temp }}/ledger
+        run: bash install.sh
       - name: smoke
-        run: sh tests/smoke.sh
-        env:
-          DEBUGPEDIA_DIR: ${{ runner.temp }}/ledger
+        run: bash tests/smoke.sh
       - name: redteam
-        run: sh redteam/run.sh
-        env:
-          DEBUGPEDIA_DIR: ${{ runner.temp }}/ledger
+        run: bash redteam/run.sh
   macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - run: echo "DEBUGPEDIA_DIR=$RUNNER_TEMP/ledger" >> "$GITHUB_ENV"
       - name: install
-        run: sh install.sh
-        env:
-          DEBUGPEDIA_DIR: ${{ runner.temp }}/ledger
+        run: bash install.sh
       - name: smoke
-        run: sh tests/smoke.sh
-        env:
-          DEBUGPEDIA_DIR: ${{ runner.temp }}/ledger
+        run: bash tests/smoke.sh
       - name: redteam
-        run: sh redteam/run.sh
-        env:
-          DEBUGPEDIA_DIR: ${{ runner.temp }}/ledger
+        run: bash redteam/run.sh
