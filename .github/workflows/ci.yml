@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: 設定 CI 帳本路徑
-        run: echo "DEBUGPEDIA_DIR=$RUNNER_TEMP/ledger" >> "$GITHUB_ENV"
+        run: echo "DEBUGPEDIA_DIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: install
         run: bash install.sh

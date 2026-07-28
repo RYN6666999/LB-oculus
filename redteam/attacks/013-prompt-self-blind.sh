@@ -21,8 +21,13 @@ case "$rc" in
     breach "dbp prompt bin/dbp exit 0 且輸出: $(printf '%s' "$out" | head -3)"
     ;;
   1)
-    # 預期行為：有前科 → exit 1
-    sealed "dbp prompt 正確回報前科"
+    # exit 1 有兩個意思：查到前科、檔案不存在。只看 rc 分不出來。
+    # 改看輸出內容有沒有包含種下的那筆前科文字
+    if printf '%s' "$out" | grep -q 'dbp prompt 測試前科'; then
+      sealed "dbp prompt 輸出內容含種下的前科，確認有查到"
+    else
+      breach "dbp prompt exit 1 但輸出不含種下的前科: $(printf '%s' "$out" | head -5)"
+    fi
     ;;
   *)
     broken "dbp prompt 異常退出碼 $rc"

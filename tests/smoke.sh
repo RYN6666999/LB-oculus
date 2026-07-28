@@ -52,7 +52,7 @@ fingerprint() {
 }
 FP_BEFORE="$(fingerprint)"
 
-export DEBUGPEDIA_DIR="$LEDGER"
+export DEBUGPEDIA_DIR="$TMP"
 
 cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT
@@ -336,7 +336,7 @@ c14() {
   [ -f "$gen" ] || { echo "前置不成立：找不到 $gen"; return 2; }
   hb="$TMP/hb.json"
   # 用沙盒 ledger + 明確沒有 LLM 的環境跑
-  ( cd "$TMP" && env -u DBP_LLM_CMD DEBUGPEDIA_DIR="$LEDGER" sh "$gen" >/dev/null 2>&1 )
+  ( cd "$TMP" && env -u DBP_LLM_CMD DEBUGPEDIA_DIR="$TMP" sh "$gen" >/dev/null 2>&1 )
   rc=$?
   [ "$rc" -ne 0 ] || { echo "沒有 LLM 可用，generalize.sh 竟然 exit 0 —— 這就是安靜無作用"; return 1; }
   real_hb="$REPO/cron/_heartbeat.json"
