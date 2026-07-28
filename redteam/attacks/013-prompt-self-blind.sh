@@ -1,9 +1,10 @@
 #!/bin/sh
-# EXPECT: BREACH
+# EXPECT: SEALED
 # TARGET: bin/dbp — prompt() 自盲退化
 # CLAIM: dbp prompt 對帳本裡有前科的檔案回「無前科」
 # WHY: risk() 的過濾條件一旦被改回 len(stem)>3 或加了新盲區，
 #      prompt 會靜默回「無前科」—— 假綠比沒有更糟。
+# 修復：8f771dc（013 改看輸出內容含種下的前科文字，不再只看 rc）
 . "$RT_LIB"
 
 need "$SANDBOX/bin/dbp"

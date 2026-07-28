@@ -29,3 +29,10 @@ dbp() { DEBUGPEDIA_DIR="$DPEDIA" "$PY" "$SANDBOX/bin/dbp" "$@"; }
 
 # 前置條件不成立時要 BROKEN，不可以 SEALED。
 need() { [ -e "$1" ] || broken "前置條件不成立，缺少 $1"; }
+
+# 取得 DEBUGPEDIA_DIR 的預設值（單一來源，從 bin/dbp 讀取）
+# 路徑定義只存在 bin/dbp 的 DIR 變數，其他地方一律讀這裡。
+# 讀不到就用 ~/.debugpedia。
+dbp_default_dir() {
+  "$SANDBOX/bin/dbp" _dir 2>/dev/null || echo "$HOME/.debugpedia"
+}

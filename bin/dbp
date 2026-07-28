@@ -897,6 +897,9 @@ def main(argv):
         return verify_chain(anchor_hash, which=which)
     if cmd == "prompt":
         return prompt(argv[1:]) if len(argv) > 1 else (print("用法: dbp prompt <檔案...>") or 2)
+    if cmd == "_dir":
+        print(str(DIR))
+        return 0
 
     # 預設就是記一筆 —— 最常用的動作不該需要子指令
     what, where, who, tags, ev = [], None, "ai", None, None

@@ -156,12 +156,13 @@ FIX_ID="$(dbp "smoke 種子：等著被補解法的一筆" -t smoke 2>/dev/null 
 [ -n "$FIX_ID" ] && SEED_N=$((SEED_N + 1))
 
 # ── A03 · P0-1 · ledger 裡有 _edits.jsonl 時 ls 不該爆 ───────────────
+# 修復：ccb3ae2（階段 A：ledger/ 接地 + _all() 防呆，排除 _ 前綴的 ledger 檔）
 c03() {
   [ -f "$EDITS" ] || { echo "前置不成立：gate 沒寫出 _edits.jsonl，無法觸發本條"; return 2; }
   err="$(dbp ls 2>&1)"; rc=$?
   [ "$rc" -eq 0 ] || { printf '%s\n' "$err" | tail -3; return 1; }
 }
-run_case A03 KNOWN_FAIL "dbp ls 在 ledger 有 _edits.jsonl 時 exit 0（P0-1）" c03
+run_case A03 PASS "dbp ls 在 ledger 有 _edits.jsonl 時 exit 0（P0-1）" c03
 
 # ── A04 · P0-1b · stats 總數 == 真 bug 數 ────────────────────────────
 # 真 bug 數 = 我剛剛種了幾筆（推導）。_edits.jsonl 是機械 log，不是 bug，

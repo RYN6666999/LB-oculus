@@ -8,8 +8,8 @@
 dbp "紅隊種下的真實紀錄" -k human -t redteam-probe >/dev/null 2>&1 \
   || broken "dbp 寫不進去，攻擊無法進行"
 
-wk=$(ls "$LEDGER"/*.jsonl 2>/dev/null | head -1)
-[ -n "$wk" ] || broken "ledger 檔沒生出來"
+wk=$(ls "$DPEDIA"/*.jsonl 2>/dev/null | head -1)
+[ -n "$wk" ] || broken "ledger 檔沒生出來（dbp add 寫到 $DPEDIA/，不是 $LEDGER/）"
 
 before=$(dbp stats 2>/dev/null | grep -c 'redteam-probe')
 
