@@ -1,7 +1,27 @@
 name: CI
 on: push
 jobs:
-  ci:
+  ubuntu:
     runs-on: ubuntu-latest
+    env:
+      DEBUGPEDIA_DIR: ${{ runner.temp }}/ledger
     steps:
-      - run: sh install.sh
+      - uses: actions/checkout@v4
+      - name: install
+        run: sh install.sh
+      - name: smoke
+        run: sh tests/smoke.sh
+      - name: redteam
+        run: sh redteam/run.sh
+  macos:
+    runs-on: macos-latest
+    env:
+      DEBUGPEDIA_DIR: ${{ runner.temp }}/ledger
+    steps:
+      - uses: actions/checkout@v4
+      - name: install
+        run: sh install.sh
+      - name: smoke
+        run: sh tests/smoke.sh
+      - name: redteam
+        run: sh redteam/run.sh
