@@ -1,0 +1,5 @@
+id: bug-002
+description: "API 回傳的時間格式沒有統一處理時區"
+status: KNOWN_FAIL
+recorded_date: "2026-07-28"  # 今天的錄入日期
+expire_date: "2026-08-04"    # 7 天後強制引爆
