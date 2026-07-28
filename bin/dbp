@@ -615,7 +615,7 @@ def chain_append(data, ledger_name):
 
 
 def _read_chain(path):
-    """走完整條鏈，回傳 (ok, 斷行行號, 總行數, 接地前筆數, 鏈筆數, [chain hash列表])。
+    """走完整條鏈，回傳 (ok, 斷行行號, 總行數, 接地前筆數, 有 chain_start 標記, 鏈筆數, [chain hash列表])。
     ok=True：鏈完整；ok=False：斷在第 n 行。
     既有無 prev 的舊紀錄視為接地前資料，跳過不驗。
     若遇到 {"chain_start":true,...} 標記，從該行起算鏈起點。
@@ -624,25 +624,25 @@ def _read_chain(path):
     try:
         lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
     except FileNotFoundError:
-        return True, None, 0, 0, 0, []
+        return True, None, 0, 0, False, 0, []
     lines = [l.strip() for l in lines if l.strip()]
     n = 0
     pre_chain = 0
     chain_n = 0
     hashes = []
     chain_started = False
-    in_chain = False
+    has_chain_start = False
     for line in lines:
         n += 1
         try:
             rec = json.loads(line)
         except json.JSONDecodeError:
-            return False, n, n, pre_chain, chain_n, hashes
+            return False, n, n, pre_chain, has_chain_start, chain_n, hashes
         h = hashlib.sha256(line.encode("utf-8")).hexdigest()
         prev = rec.get("prev", "")
         if rec.get("chain_start"):
             chain_started = True
-            in_chain = True
+            has_chain_start = True
             pre_chain = n - 1  # 此行之前都算接地前
             continue
         if not prev:
@@ -650,18 +650,17 @@ def _read_chain(path):
         chain_n += 1
         if not chain_started:
             chain_started = True
-            in_chain = True
             pre_chain = n - 1
             if prev != "genesis":
-                return False, n, n, pre_chain, chain_n, hashes
+                return False, n, n, pre_chain, has_chain_start, chain_n, hashes
         else:
             expected = hashlib.sha256(lines[n-2].encode("utf-8")).hexdigest()
             if prev != expected:
-                return False, n, n, pre_chain, chain_n, hashes
+                return False, n, n, pre_chain, has_chain_start, chain_n, hashes
         hashes.append(h)
     if not chain_started:
         pre_chain = n  # 整份都沒有鏈資料
-    return True, None, n, pre_chain, chain_n, hashes
+    return True, None, n, pre_chain, has_chain_start, chain_n, hashes
 
 
 def _ledger_file(which="edits"):
@@ -677,7 +676,7 @@ def anchor(human=False, which="edits", all_ledgers=False):
     rc = 0
     for w in targets:
         p = _ledger_file(w)
-        ok, broken, n, pre_chain, chain_n, hashes = _read_chain(str(p))
+        ok, broken, n, pre_chain, has_chain_start, chain_n, hashes = _read_chain(str(p))
         label = {"edits": "edits", "runs": "runs"}.get(w, w)
         if n == 0:
             print(f"錨點({label})：空鏈（尚無紀錄）")
@@ -721,7 +720,7 @@ def verify_chain(anchor_hash=None, which="edits"):
     """
     p = _ledger_file(which)
     label = {"edits": "edits", "runs": "runs"}.get(which, which)
-    ok, broken, n, pre_chain, chain_n, hashes = _read_chain(str(p))
+    ok, broken, n, pre_chain, has_chain_start, chain_n, hashes = _read_chain(str(p))
 
     if n == 0:
         print(f"verify-chain({label}): 鏈為空")
@@ -731,15 +730,36 @@ def verify_chain(anchor_hash=None, which="edits"):
         print(f"verify-chain({label}): ✗ 斷在第 {broken} 行")
         return 1
 
-    coverage = chain_n / n if n > 0 else 0
+    # 分母只算 chain_start 之後的資料筆數（排除 chain_start 標記本身）
+    after_total = n - pre_chain
+    if has_chain_start:
+        after_total -= 1  # chain_start 標記不計入分母
+    coverage = chain_n / after_total if after_total > 0 else 0
     last_hash = hashes[-1] if hashes else "genesis"
-    pre_msg = f" · chain_start 前 {pre_chain} 筆不在鏈上" if pre_chain > 0 else ""
-    print(f"verify-chain({label}): ✓ 已驗 {chain_n} / 總 {n} 筆（覆蓋率 {coverage:.0%}{pre_msg}）")
-    print(f"                       末筆 hash {last_hash[:12]}")
+    pre_msg = f" · 接地前 {pre_chain} 筆不在鏈上（不計入）" if pre_chain > 0 else ""
 
-    if coverage < 0.9 and chain_n > 0:
-        print(f"             ✗ 鏈覆蓋率不足（{coverage:.0%}），疑似斷層或舊資料未遷移")
-        return 1
+    # 決定狀態：第一行符號必須與 exit code 一致
+    if not ok:
+        sym = "✗"
+        rc = 1
+    elif chain_n > 0 and coverage < 1.0:
+        sym = "✗"
+        rc = 1
+    elif chain_n == 0 and after_total > 0:
+        # 接地後有資料但無鏈筆 → 全部中斷
+        sym = "✗"
+        rc = 1
+    else:
+        sym = "✓"
+        rc = 0
+
+    if after_total > 0:
+        print(f"verify-chain({label}): 接地後 {chain_n}/{after_total}（{coverage:.0%}）{sym}{pre_msg}")
+    else:
+        print(f"verify-chain({label}): 接地後無資料{sym}")
+    print(f"                      末筆 hash {last_hash[:12]}")
+    if rc == 1 and chain_n > 0 and coverage < 1.0:
+        print(f"                      鏈覆蓋率不足（{coverage:.0%}），疑似斷層或舊資料未遷移")
 
     if anchor_hash:
         parts = anchor_hash.split(":")

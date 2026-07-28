@@ -78,6 +78,15 @@
 ## 錨點狀態
 
 ```
-edits 9eb62de67ef7 1 2026-07-27T16:19:13Z
-runs genesis 0 2026-07-27T16:19:13Z
+edits 87955719c88e 15 2026-07-28T00:46:37Z
+runs 92e749f59e23 11 2026-07-28T00:46:37Z
 ```
+
+## 輪次 3 變更清單
+
+| 檔案 | 變更 |
+|------|------|
+| `.github/workflows/ci.yml` | 新增 — CI push/PR 雙觸發，ubuntu+macos 雙 runner，三個獨立 step |
+| `bin/dbp` | verify-chain 分母改接地後、假綠修復（第一行符號配 exit code）、_read_chain 回 7-tuple |
+| `audit/ANCHORS.md` | 更新錨點至 edits=15 / runs=11 |
+| `plan/balance-log.md` | 本輪 |
