@@ -1,0 +1,34 @@
+name: Oculus Remote CI
+
+# 只要有人 Push 或發 PR 到 main 分支，就會觸發改考卷機器人
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  check-rules:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 把你的專案程式碼抓到 GitHub 雲端主機
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. 檢查 oculus-rules 裡面的壞帳 (KNOWN_FAIL)
+      - name: Verify Oculus Rules
+        run: |
+          echo "正在檢查 oculus-rules 規則庫..."
+          
+          # 計算有多少個 KNOWN_FAIL 壞帳
+          KNOWN_COUNT=$(grep -rnw 'oculus-rules/' -e 'status: KNOWN_FAIL' 2>/dev/null | wc -l || true)
+          echo "目前 KNOWN_FAIL 數量: $KNOWN_COUNT"
+          
+          # 條款：超過 3 個直接熔斷亮紅燈
+          if [ "$KNOWN_COUNT" -gt 3 ]; then
+            echo "❌ 錯誤：KNOWN_FAIL 數量超過上限 (最多 3 個，目前 $KNOWN_COUNT 個)！"
+            exit 1
+          fi
+
+          echo "✅ 規則庫檢查通過！"
