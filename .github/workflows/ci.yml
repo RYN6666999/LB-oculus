@@ -7,5 +7,13 @@ jobs:
         os: [ubuntu-latest, macos-latest]
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    env:
+      DEBUGPEDIA_DIR: ${{ runner.temp }}/ledger
     steps:
-      - run: echo "hello ${{ matrix.os }}"
+      - uses: actions/checkout@v4
+      - name: install
+        run: sh install.sh
+      - name: smoke
+        run: sh tests/smoke.sh
+      - name: redteam
+        run: sh redteam/run.sh
