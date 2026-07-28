@@ -286,9 +286,11 @@ run_case A10 KNOWN_FAIL "_runs.jsonl 不含 sk- 樣式（P1-6）" c10
 # WATCH 只認 Edit/Write/NotebookEdit/MultiEdit。
 # 用 sed -i / cat > 改檔完全不留痕 —— 而那正是 AI 最常用的改檔手法。
 c11() {
+  GATE_RUNNER="$HOOK_GATE_SRC"
+  [ -x "$GATE" ] && GATE_RUNNER="$GATE"
   before="$(lines "$EDITS")"
   printf '{"tool_name":"Bash","tool_input":{"command":"sed -i \\"1s/a/b/\\" %s/target.py"}}\n' "$FIXTURE" \
-    | "$GATE" >/dev/null 2>&1
+    | "$GATE_RUNNER" >/dev/null 2>&1
   after="$(lines "$EDITS")"
   [ "$after" -gt "$before" ] || { echo "Bash 改檔沒有留下任何 _edits 紀錄（$before → $after）"; return 1; }
 }
@@ -299,9 +301,11 @@ run_case A11 KNOWN_FAIL "Bash 改檔 payload 會進 _edits.jsonl（P0-2）" c11
 # dbp 一失效，兩本帳同時空白 —— 複式簿記整個失效，而且完全靜默。
 c12() {
   bare="$TMP/bare-home"; mkdir -p "$bare"
+  GATE_RUNNER="$HOOK_GATE_SRC"
+  [ -x "$GATE" ] && GATE_RUNNER="$GATE"
   before="$(lines "$EDITS")"
   printf '{"tool_name":"Edit","tool_input":{"file_path":"%s/target.py"}}\n' "$FIXTURE" \
-    | env HOME="$bare" "$GATE" >/dev/null 2>&1
+    | env HOME="$bare" "$GATE_RUNNER" >/dev/null 2>&1
   after="$(lines "$EDITS")"
   [ "$after" -gt "$before" ] || { echo "dbp 不存在時 gate 連 _edits 都不寫了（$before → $after）"; return 1; }
 }
