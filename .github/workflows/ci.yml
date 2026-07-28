@@ -1,6 +1,5 @@
 name: Oculus Remote CI
 
-# 只要有人 Push 或發 PR 到 main 分支，就會觸發改考卷機器人
 on:
   push:
     branches: [ main ]
@@ -12,52 +11,89 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. 把你的專案程式碼抓到 GitHub 雲端主機
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. 檢查 oculus-rules 裡面的壞帳數量與是否過期
-      - name: Verify Oculus Rules
-        run: |
-          echo "正在檢查 oculus-rules 規則庫..."
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-          echo "=== 檢查 1：KNOWN_FAIL 數量上限 ==="
+      - name: Install dependencies
+        run: |
+          pip install pyyaml pytest
+
+      - name: Verify Bad Debt & Expiry
+        run: |
+          echo "=== 檢查 1：KNOWN_FAIL 數量上限 (≤ 3) ==="
           KNOWN_COUNT=$(grep -rnw 'oculus-rules/' -e 'status: KNOWN_FAIL' 2>/dev/null | wc -l || true)
           echo "目前 KNOWN_FAIL 數量: $KNOWN_COUNT"
-
-          # 條款：超過 3 個直接熔斷亮紅燈
           if [ "$KNOWN_COUNT" -gt 3 ]; then
-            echo "❌ 錯誤：KNOWN_FAIL 數量超過上限 (最多 3 個，目前 $KNOWN_COUNT 個)！"
+            echo "❌ 錯誤：KNOWN_FAIL 數量超過上限 (最多 3 個)！"
             exit 1
           fi
 
-          echo "=== 檢查 2：檢查壞帳是否過期 (7 天 TTL 引爆) ==="
+          echo "=== 檢查 2：壞帳是否過期 (7 天 TTL) ==="
           TODAY=$(date +%Y-%m-%d)
-          echo "今天日期: $TODAY"
-
           EXPIRED_FOUND=0
-          
-          # 逐一掃描 oculus-rules 資料夾內的所有 yml 檔案
           for f in oculus-rules/*.yml oculus-rules/*.yaml; do
             if [ -f "$f" ]; then
-              # 讀取 expire_date 欄位裡面的日期
               EXPIRE_DATE=$(grep -E '^expire_date:' "$f" | sed -E 's/expire_date:[[:space:]]*"?([0-9]{4}-[0-9]{2}-[0-9]{2})"?/\1/' | tr -d '\r')
-              
-              if [ -n "$EXPIRE_DATE" ]; then
-                if [[ "$TODAY" > "$EXPIRE_DATE" ]]; then
-                  echo "❌ 致命錯誤：規則檔 $f 已過期 (到期日: $EXPIRE_DATE，今天: $TODAY)！"
-                  EXPIRED_FOUND=1
-                else
-                  echo "ℹ️ 規則檔 $f 尚未過期 (到期日: $EXPIRE_DATE)"
-                fi
+              if [ -n "$EXPIRE_DATE" ] && [[ "$TODAY" > "$EXPIRE_DATE" ]]; then
+                echo "❌ 致命錯誤：規則檔 $f 已過期 (到期日: $EXPIRE_DATE)！"
+                EXPIRED_FOUND=1
               fi
             fi
           done
-
-          # 如果發現有任何一份壞帳已經過期，直接亮紅燈
           if [ "$EXPIRED_FOUND" -eq 1 ]; then
-            echo "❌ 發現已過期未修復的壞帳，強迫停工修復！"
             exit 1
           fi
 
-          echo "✅ 規則庫所有防線檢查通過！"
+      - name: Run Rule Assertions
+        run: |
+          python -c "
+          import glob, yaml, sys, os, importlib.util
+
+          failed = False
+          rule_files = glob.glob('oculus-rules/*.yml') + glob.glob('oculus-rules/*.yaml')
+
+          for filepath in rule_files:
+              with open(filepath, 'r', encoding='utf-8') as f:
+                  data = yaml.safe_load(f)
+              
+              if data and data.get('status') == 'ACTIVE' and 'assertion' in data and 'target_file' in data:
+                  target = data['target_file']
+                  assertion = data['assertion']
+                  rule_id = data.get('id', filepath)
+                  
+                  print(f'🔍 正在驗證 [{rule_id}]: {assertion} (目標: {target})')
+                  
+                  if not os.path.exists(target):
+                      print(f'⚠️ 跳過 [{rule_id}]: 目標檔案 {target} 尚不存在')
+                      continue
+                      
+                  try:
+                      spec = importlib.util.spec_from_file_location('target_module', target)
+                      module = importlib.util.module_from_spec(spec)
+                      spec.loader.exec_module(module)
+                      
+                      result = eval(assertion, module.__dict__)
+                      if not result:
+                          print(f'❌ 驗證失敗 [{rule_id}]: 斷言 \'{assertion}\' 結果為 False！')
+                          failed = True
+                      else:
+                          print(f'✅ 驗證成功 [{rule_id}]: \'{assertion}\' 通過！')
+                  except Exception as e:
+                      print(f'❌ 執行異常 [{rule_id}]: 無法執行斷言 \'{assertion}\'，錯誤: {e}')
+                      failed = True
+
+          if failed:
+              sys.exit(1)
+          "
+
+      - name: Run Property-Based Tests
+        run: |
+          echo "=== 執行屬性測試 (1,000 次隨機資料衝擊) ==="
+          if [ -d "tests" ]; then
+            pytest tests/
+          fi
