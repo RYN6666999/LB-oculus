@@ -60,23 +60,24 @@ jobs:
           for filepath in rule_files:
               with open(filepath, 'r', encoding='utf-8') as f:
                   data = yaml.safe_load(f)
-              
+
               if data and data.get('status') == 'ACTIVE' and 'assertion' in data and 'target_file' in data:
                   target = data['target_file']
                   assertion = data['assertion']
                   rule_id = data.get('id', filepath)
-                  
+
                   print(f'🔍 正在驗證 [{rule_id}]: {assertion} (目標: {target})')
-                  
+
                   if not os.path.exists(target):
-                      print(f'⚠️ 跳過 [{rule_id}]: 目標檔案 {target} 尚不存在')
+                      print(f'❌ 致命錯誤 [{rule_id}]: 規則指定的目標檔案 \'{target}\' 不存在！禁止刪檔逃避驗證！')
+                      failed = True
                       continue
-                      
+
                   try:
                       spec = importlib.util.spec_from_file_location('target_module', target)
                       module = importlib.util.module_from_spec(spec)
                       spec.loader.exec_module(module)
-                      
+
                       result = eval(assertion, module.__dict__)
                       if not result:
                           print(f'❌ 驗證失敗 [{rule_id}]: 斷言 \'{assertion}\' 結果為 False！')
@@ -92,8 +93,7 @@ jobs:
           "
 
       - name: Run Property-Based Tests
+        if: always()
         run: |
           echo "=== 執行屬性測試 (1,000 次隨機資料衝擊) ==="
-          if [ -d "tests" ]; then
-            pytest tests/
-          fi
+          pytest tests/
