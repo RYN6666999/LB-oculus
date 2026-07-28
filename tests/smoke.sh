@@ -44,7 +44,7 @@ LEDGER="$TMP/ledger"
 FIXTURE="$TMP/fixture"
 mkdir -p "$HOME_T" "$LEDGER" "$FIXTURE"
 
-REAL_DBP="${DEBUGPEDIA_DIR:-$HOME/.debugpedia}"
+REAL_DBP="${DEBUGPEDIA_DIR:-$(~/.local/bin/dbp _dir 2>/dev/null || echo "$HOME/.debugpedia")}"
 fingerprint() {
   [ -d "$REAL_DBP" ] || { echo "(不存在)"; return 0; }
   # 檔名 + 位元組數。內容變了但大小沒變的機率不是 0，但這是不需要 hash 工具的最強可攜檢查。
