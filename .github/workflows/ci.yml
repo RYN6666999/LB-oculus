@@ -1,25 +1,24 @@
 name: CI
 on: [push, pull_request]
+
 jobs:
-  ubuntu:
-    runs-on: ubuntu-latest
+  ci:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - run: echo "DEBUGPEDIA_DIR=$RUNNER_TEMP/ledger" >> "$GITHUB_ENV"
+
+      - name: 設定 CI 帳本路徑
+        run: echo "DEBUGPEDIA_DIR=$RUNNER_TEMP/ledger" >> "$GITHUB_ENV"
+
       - name: install
         run: bash install.sh
+
       - name: smoke
         run: bash tests/smoke.sh
-      - name: redteam
-        run: bash redteam/run.sh
-  macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: echo "DEBUGPEDIA_DIR=$RUNNER_TEMP/ledger" >> "$GITHUB_ENV"
-      - name: install
-        run: bash install.sh
-      - name: smoke
-        run: bash tests/smoke.sh
+
       - name: redteam
         run: bash redteam/run.sh
