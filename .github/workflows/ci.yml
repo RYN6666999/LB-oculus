@@ -21,4 +21,5 @@ jobs:
         run: bash tests/smoke.sh
 
       - name: redteam
+        if: always()
         run: bash redteam/run.sh

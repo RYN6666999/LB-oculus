@@ -100,6 +100,9 @@ run_case() {
 D="$HOME_T/.local/bin/dbp"                 # 走安裝後的路徑，不是 repo 裡的 bin/dbp
 GATE="$HOME_T/.claude/hooks/dbp-risk-gate"
 CAP="$HOME_T/.claude/hooks/dbp-autocapture"
+# 直接餵 hook 原始檔（安裝可能不存在，但原始檔一定在 repo 裡）
+HOOK_GATE_SRC="$REPO/hooks/dbp-risk-gate"
+HOOK_CAP_SRC="$REPO/hooks/dbp-autocapture"
 
 # 產出者不得自驗：本案改的是 shebang 與 install.sh，
 # 所以驗收一律「執行安裝後的檔」，不准讀 install.sh 的輸出當證據。
@@ -134,10 +137,13 @@ c02() {
 run_case A02 PASS "dbp --help 從安裝後的路徑 exit 0（P0-0）" c02
 
 # ── 前置：讓 gate 產生 _edits.jsonl ─────────────────────────────────
-# 這一步同時是 A03 的觸發條件。用真的 hook 產出，不手捏假資料 ——
-# 手捏的形狀就算對，也只是我對形狀的宣稱。
+# 直接餵 stdin 給 hook 原始檔，不依賴 Claude 安裝路徑。
+# clean CI 機器上 hook 不在標準位置，但原始檔一定在 repo 裡。
+GATE_RUNNER="$HOOK_GATE_SRC"
+# 如果安裝路徑有 hook 就用安裝的（那才是產出者要驗的路徑）
+[ -x "$GATE" ] && GATE_RUNNER="$GATE"
 printf '{"tool_name":"Edit","tool_input":{"file_path":"%s/target.py"}}\n' "$FIXTURE" \
-  | "$GATE" >/dev/null 2>&1
+  | "$GATE_RUNNER" >/dev/null 2>&1
 EDITS="$LEDGER/_edits.jsonl"
 
 # 種幾筆真 bug 紀錄，之後的斷言都從「我寫了幾筆」推導，不寫死數字。
@@ -160,13 +166,14 @@ run_case A03 KNOWN_FAIL "dbp ls 在 ledger 有 _edits.jsonl 時 exit 0（P0-1）
 # ── A04 · P0-1b · stats 總數 == 真 bug 數 ────────────────────────────
 # 真 bug 數 = 我剛剛種了幾筆（推導）。_edits.jsonl 是機械 log，不是 bug，
 # 但 _all() 的 glob 是 *.jsonl，把它一起算進去 → 分母被污染。
+# 修復：ccb3ae2（階段 A：ledger/ 接地 + _all() 防呆，排除 _ 前綴）
 c04() {
   tot="$(dbp stats 2>/dev/null | sed -n 's/^總計 \([0-9]*\) 筆.*/\1/p' | head -1)"
   [ -n "$tot" ] || { echo "stats 沒印出總計，形狀變了"; return 2; }
   [ "$SEED_N" -gt 0 ] || { echo "前置不成立：一筆種子都沒寫進去"; return 2; }
   [ "$tot" -eq "$SEED_N" ] || { echo "stats 總計=$tot 但真 bug 數=$SEED_N（差額=機械 log 被算成 bug）"; return 1; }
 }
-run_case A04 KNOWN_FAIL "dbp stats 總數 == 真 bug 數（P0-1b）" c04
+run_case A04 PASS "dbp stats 總數 == 真 bug 數（P0-1b）" c04
 
 # ── A05 · P0-3 · fix 之後指標要動 ────────────────────────────────────
 # fix() 只是 append 一筆新紀錄，沒有任何一行的 fix 欄位被填上 →
@@ -192,8 +199,9 @@ run_case A05 KNOWN_FAIL "dbp fix 後 stats 的 % > 0（P0-3）" c05
 #   （鐵律一：抄寫就是排程好的未來謊言。連自己的計畫案也不能抄。）
 #
 # 真正的洞：`len(stem) > 3` 排除掉所有三字 stem 的比對路徑。
-# 前科記在 `bin/dbp`，今天要改 `bin/dbp.py`（base 不同、stem 相同）→ 查不到。
+# 前科記在 bin/dbp，今天要改 `bin/dbp.py`（base 不同、stem 相同）→ 查不到。
 # 這不是假設：dbp / gsk / 任何三字工具名都在這個盲區裡。
+# 修復：f1713c0（輪次 3-final: dbp prompt + risk() 修自盲，len(stem)>3 → >=3）
 c06() {
   out="$(dbp risk bin/dbp.py 2>&1)"
   case "$out" in
@@ -204,7 +212,7 @@ c06() {
   esac
   [ -n "$out" ] || { echo "risk 完全沒有輸出"; return 1; }
 }
-run_case A06 KNOWN_FAIL "dbp risk 跨副檔名查得到同 stem 前科（新洞 E）" c06
+run_case A06 PASS "dbp risk 跨副檔名查得到同 stem 前科（新洞 E）" c06
 
 # ── A06b · 反面：risk 不該無故命中 ───────────────────────────────────
 # 沒有這條，把 len(stem)>3 改成 >=3 之後，A06 會變綠但可能是因為
@@ -264,8 +272,10 @@ run_case A09 KNOWN_FAIL "dbp <未知子指令> 非零且不寫帳本（新洞 D�
 # autocapture 把 cmd[:500] 原封不動寫進帳本。指令裡的 token 就進去了，
 # 而帳本是 append-only、將來還要搬去別台機器 —— 越搬越難刪。
 c10() {
+  CAP_RUNNER="$HOOK_CAP_SRC"
+  [ -x "$CAP" ] && CAP_RUNNER="$CAP"
   printf '{"command":"curl -H \\"Authorization: Bearer sk-SMOKEFAKEKEY0000000000\\" https://example.com","exit_code":0}\n' \
-    | "$CAP" >/dev/null 2>&1
+    | "$CAP_RUNNER" >/dev/null 2>&1
   r="$LEDGER/_runs.jsonl"
   [ -f "$r" ] || { echo "前置不成立：autocapture 沒寫出 _runs.jsonl"; return 2; }
   grep -q 'sk-SMOKEFAKEKEY' "$r" && { echo "_runs.jsonl 裡有未遮罩的 sk- 字串"; return 1; }
